@@ -19,6 +19,8 @@ struct ContentView: View {
     // Restore user data for Avatar
     @AppStorage("use_custom_avatar") private var useCustomAvatar = false
     @AppStorage("avatar_timestamp") private var avatarTimestamp: Double = 0
+    // 🔥 Bind UserName
+    @AppStorage("user_name") private var userName = "UserName"
     
     // Animation Namespace
     @Namespace private var animation
@@ -57,11 +59,8 @@ struct ContentView: View {
                     HStack {
                         AvatarView(useCustom: useCustomAvatar, timestamp: avatarTimestamp)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Shawn Rain")
+                            Text(userName)
                                 .font(.system(size: 13, weight: .medium))
-                            Text("Pro Plan")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
                         }
                         Spacer()
                         Button(action: { appState.selectedTab = .settings }) {

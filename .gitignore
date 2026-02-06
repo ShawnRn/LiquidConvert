@@ -1,6 +1,10 @@
 # macOS
 .DS_Store
 .Trashes
+.AppleDouble
+.LSOverride
+Icon
+
 
 # Xcode
 build/
@@ -21,9 +25,22 @@ DerivedData
 *.gunglare
 /LiquidConvert.xcodeproj/project.xcworkspace/xcuserdata/
 
-# Swift Package Manager
+# Build Manifest
 .build/
+
+# Swift Package Manager
 .swiftpm/
+Packages/
+
+# CocoaPods
+Pods/
+
+# Bundle artifacts
+*.dSYM.zip
+*.dSYM/
+*.app/
+*.pkg
+releases/
 
 # Node.js
 node_modules/
@@ -34,3 +51,5 @@ yarn-error.log
 # Editor/IDE
 .vscode/
 .idea/
+*.swp
+*~

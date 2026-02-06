@@ -215,7 +215,7 @@ struct LiquidConvertApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .frame(minWidth: 1000, minHeight: 700)
+                .frame(minWidth: 1100, minHeight: 700)
                 .background(
                     VisualEffectBackground(
                         material: .underWindowBackground, blendingMode: .behindWindow)
@@ -231,7 +231,6 @@ struct LiquidConvertApp: App {
         }
         .handlesExternalEvents(matching: [])
         .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
 
         // 🔥 自定义菜单：替换默认的"关于"行为
         .commands {

@@ -19,6 +19,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
+    @StateObject private var updaterController = UpdaterController()
     
     // 状态管理
     @AppStorage("audio_output_format") private var audioFormat = "mp3"
@@ -30,8 +31,8 @@ struct SettingsView: View {
     @AppStorage("icon_delete_original") private var iconDel = false
     @AppStorage("app_appearance") private var appearance: AppAppearance = .system
     
-    @AppStorage("user_name") private var userName = "Shawn Rain"
-    @AppStorage("user_signature") private var userSignature = "设置将在您的所有应用实例中同步" // 个性签名
+    @AppStorage("user_name") private var userName = "UserName"
+    @AppStorage("user_signature") private var userSignature = "介绍一下你自己..." // 个性签名
     @AppStorage("use_custom_avatar") private var useCustomAvatar = false
     @AppStorage("avatar_timestamp") private var avatarTimestamp: Double = 0
     @State private var avatarRefreshID = UUID()
@@ -136,6 +137,24 @@ struct SettingsView: View {
                             }
                             
                             Spacer()
+                            
+                            // Check for Updates Button
+                            Button(action: {
+                                updaterController.checkForUpdates()
+                            }) {
+                                VStack(spacing: 4) {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.blue.opacity(0.8))
+                                    Text("检查更新")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.blue.opacity(0.8))
+                                }
+                                .frame(width: 80, height: 80)
+                                .background(Color.blue.opacity(0.05))
+                                .cornerRadius(12)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(24)
@@ -207,7 +226,7 @@ struct SettingsView: View {
                     // 5. 关于与交互
                     VStack(spacing: 32) {
                         VStack(spacing: 4) {
-                            Text("LiquidConvert Pro")
+                            Text("LiquidConvert")
                                 .font(.system(size: 14, weight: .bold))
                             Text(appVersion)
                                 .font(.system(size: 11))

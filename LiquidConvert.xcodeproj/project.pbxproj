@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		462659C32F362CF200BBBE9F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 462659C22F362CF200BBBE9F /* Sparkle */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		46A8690F2EDE727400D61126 /* LiquidConvert.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LiquidConvert.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -36,6 +40,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				462659C32F362CF200BBBE9F /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,6 +83,7 @@
 			);
 			name = LiquidConvert;
 			packageProductDependencies = (
+				462659C22F362CF200BBBE9F /* Sparkle */,
 			);
 			productName = LiquidConvert;
 			productReference = 46A8690F2EDE727400D61126 /* LiquidConvert.app */;
@@ -109,6 +115,9 @@
 			);
 			mainGroup = 46A869062EDE727400D61126;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				462659C12F362CF200BBBE9F /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 46A869102EDE727400D61126 /* Products */;
 			projectDirPath = "";
@@ -352,6 +361,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		462659C12F362CF200BBBE9F /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.8.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		462659C22F362CF200BBBE9F /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 462659C12F362CF200BBBE9F /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 46A869072EDE727400D61126 /* Project object */;
 }

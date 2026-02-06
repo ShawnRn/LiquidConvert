@@ -115,8 +115,7 @@ struct VideoGifFunctionView: View, Sendable {
                     .background(.ultraThinMaterial)
                 }
             }
-            .frame(minWidth: 300, maxWidth: .infinity)
-            .frame(minWidth: 300, maxWidth: .infinity)
+            .frame(minWidth: 260, maxWidth: .infinity)
             .onDrop(of: [.fileURL], delegate: FileDropDelegate(action: { handleImportedURLs($0) }))
 
             // === 右侧：检查器 (Form Style) ===
@@ -232,7 +231,7 @@ struct VideoGifFunctionView: View, Sendable {
                         }
                 }
             }
-            .frame(minWidth: 280, maxWidth: 350)
+            .frame(minWidth: 260, maxWidth: 350)
         }
         .fileImporter(
             isPresented: $isImporting,

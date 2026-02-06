@@ -372,7 +372,7 @@ struct ImageStitchingView: View, Sendable {
             // 🔥 终极防线：强制根视图尺寸等于窗口视口，防止所有 UI 偏移
             .frame(width: proxy.size.width, height: proxy.size.height)
             .coordinateSpace(name: "canvas") // 🔥 Correct placement: Viewport Coordinates
-            .frame(minWidth: 300, maxWidth: .infinity)
+            .frame(minWidth: 260, maxWidth: .infinity)
             .onAppear {
                 // 监听全局键盘事件 (Local Monitor - App Active)
                 // 先移除旧的 (Safeguard)
@@ -851,7 +851,7 @@ struct ImageStitchingView: View, Sendable {
                      .overlay(alignment: .top) { Divider() }
             }
         }
-        .frame(minWidth: 280, maxWidth: 350)
+        .frame(minWidth: 260, maxWidth: 350)
     }
     
     // MARK: - Subviews (Refined)
