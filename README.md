@@ -15,7 +15,7 @@
 
 ## 📖 Introduction
 
-**LiquidConvert** is a modern macOS utility built entirely with **SwiftUI**. It goes beyond simple format conversion by integrating "smart context" algorithms—whether it's automatically determining the best layout for stitching screenshots or intelligently compressing images to meet file size limits (e.g., <5MB) without visible quality loss.
+**LiquidConvert** is a modern macOS utility built entirely with **SwiftUI**. It goes beyond simple format conversion by integrating "smart context" algorithms: simply **drag screenshots to the Dock icon**, and it automatically determines the best layout for stitching; or drag photos, and it intelligently compresses them to meet file size limits (e.g., <5MB) without visible quality loss.
 
 > **The Story**  
 > I built this tool originally for myself. As I frequently edit documentation, I grew tired of launching Photoshop just to stitch screenshots or compress images. What started as a need for efficiency evolved into this application—now featuring a perfect "Liquid Glass" native macOS interface.
