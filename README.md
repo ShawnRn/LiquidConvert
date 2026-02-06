@@ -75,7 +75,7 @@ Powerful compression engine built on `ImageIO`.
 
 ### Requirements
 - **macOS 26.0+** (Built and tested on macOS 26)
-- **Xcode 17.0+**
+- **Xcode 26.0+**
 
 ### Tech Stack
 - **SwiftUI**: 100% Declarative UI.
