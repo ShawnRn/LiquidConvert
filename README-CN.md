@@ -1,3 +1,5 @@
+> This is a vibe-coded project. Developed with ❤️ using Antigravity.
+
 <div align="center">
 
 <img src="pics/icon.png" alt="LiquidConvert Icon" width="128" style="border-radius: 22px">
