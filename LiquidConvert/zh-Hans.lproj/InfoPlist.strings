@@ -1,0 +1,8 @@
+/* 
+  InfoPlist.strings
+  LiquidConvert - 简体中文本地化
+*/
+
+CFBundleName = "LiquidConvert";
+CFBundleDisplayName = "LiquidConvert";
+NSHumanReadableCopyright = "Copyright © 2025 Shawn Rain.";
