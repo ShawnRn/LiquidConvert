@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="AppIconSet/icon_512x512@2x.png" alt="LiquidConvert Icon" width="128" style="border-radius: 22px">
+<img src="pics/icon.png" alt="LiquidConvert Icon" width="128" style="border-radius: 22px">
 
 # LiquidConvert
 
@@ -66,7 +66,10 @@
 ## 📸 截图展示
 
 <div align="center">
-  <img src="https://via.placeholder.com/800x500?text=App+Screenshot+Placeholder" alt="Main Interface" width="800">
+  <img src="pics/Screenshot-1.png" alt="Main Interface" width="100%" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+  <br><br>
+  <img src="pics/Screenshot-2.png" alt="Feature Preview 1" width="48%" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+  <img src="pics/Screenshot-3.png" alt="Feature Preview 2" width="48%" style="border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
 </div>
 
 ---
