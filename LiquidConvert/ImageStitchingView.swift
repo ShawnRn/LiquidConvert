@@ -41,6 +41,9 @@ struct ImageStitchingView: View, Sendable {
     // Data
     @State private var files: [URL] = []
     
+    // Global State
+    @EnvironmentObject var appState: AppState
+    
     // Settings
     @AppStorage("stitch_direction") private var directionStr = "vertical"
     @AppStorage("stitch_quality") private var quality: Double = 0.9
@@ -57,6 +60,7 @@ struct ImageStitchingView: View, Sendable {
     @State private var isTargeted = false // For external drops
     
     // 🔥 纯手势拖拽的核心状态
+    @State private var activeDirection: ImageStitcher.StitchDirection = .vertical // 🔥 Local State for smooth animation
     @State private var draggingURL: URL? // 当前正在拖拽的文件 (Data Source)
     @State private var dragLocation: CGPoint = .zero // 拖拽的全局坐标 (Visual Source)
     @State private var initialDragIndex: Int? // 拖拽开始时的索引 (计算基准)
@@ -252,17 +256,7 @@ struct ImageStitchingView: View, Sendable {
                             // Remove blocking contentShape and DragGesture to allow ScrollEventHandlingView to receive events
                             // If canvas dragging (Pan) is needed later, integrate it into ScrollEventHandlingView
                         }
-                        .overlay(alignment: .bottomTrailing) {
-                            MinimapView(
-                                files: files,
-                                direction: direction,
-                                contentSize: contentSize,
-                                viewportSize: proxy.size,
-                                canvasOffset: $currentScrollOffset, // Bind directly
-                                zoomScale: zoomScale
-                            )
-                            .padding(20)
-                        }
+
                             // 限制内容的交互区域，防止无限溢出
                             .frame(width: proxy.size.width, height: proxy.size.height)
                             .clipped()
@@ -282,11 +276,11 @@ struct ImageStitchingView: View, Sendable {
                         
                         // Use the same layout as the original (VStack/HStack based on direction)
                         Group {
-                            if direction == .vertical {
+                            if activeDirection == .vertical {
                                 VStack(spacing: 16) {
                                     ForEach(itemsToDrag, id: \.self) { url in
                                         let capturedSize = itemSizes[url]
-                                        StitchImageCard(url: url, direction: direction, isSelected: false, onDelete: {})
+                                        StitchImageCard(url: url, direction: activeDirection, isSelected: false, onDelete: {})
                                             .frame(width: capturedSize?.width, height: capturedSize?.height)
                                     }
                                 }
@@ -294,7 +288,7 @@ struct ImageStitchingView: View, Sendable {
                                 HStack(spacing: 16) {
                                     ForEach(itemsToDrag, id: \.self) { url in
                                         let capturedSize = itemSizes[url]
-                                        StitchImageCard(url: url, direction: direction, isSelected: false, onDelete: {})
+                                        StitchImageCard(url: url, direction: activeDirection, isSelected: false, onDelete: {})
                                             .frame(width: capturedSize?.width, height: capturedSize?.height)
                                     }
                                 }
@@ -346,15 +340,6 @@ struct ImageStitchingView: View, Sendable {
                 }
                 
                 // === 5. Marquee Overlay ===
-                if isMarqueeSelecting {
-                    // Convert canvas rect to local view coordinates for drawing?
-                    // Canvas coordinate space is inside the ScrollView content.
-                    // But here we are outside (HSplitView -> GeometryReader).
-                    // The Marquee Gesture is coordinateSpace: .named("canvas").
-                    // So `selectionRect` is in "Canvas Space" (which includes zoom & scroll).
-                    // We need to draw it inside the Canvas ZStack to move with it?
-                    // NO. Marquee is usually drawn relative to Window/View, but the logic is easier if drawn in Canvas Space.
-                    // Let's draw it inside the canvas content layer.
                 // === 5. Marquee Overlay ===
                 if isMarqueeSelecting {
                     // Draw in Viewport Coordinates (Canvas Space)
@@ -367,6 +352,21 @@ struct ImageStitchingView: View, Sendable {
                         .position(x: selectionRect.midX, y: selectionRect.midY)
                         .allowsHitTesting(false)
                 }
+                
+                // === 6. Minimap (Top Layer) ===
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        MinimapView(
+                            files: files,
+                            direction: activeDirection,
+                            contentSize: contentSize,
+                            viewportSize: proxy.size,
+                            canvasOffset: $currentScrollOffset,
+                            zoomScale: zoomScale
+                        )
+                    }
                 }
             } // End of Root ZStack
             // 🔥 终极防线：强制根视图尺寸等于窗口视口，防止所有 UI 偏移
@@ -434,7 +434,26 @@ struct ImageStitchingView: View, Sendable {
                 // Reset Cursor State
                 NSCursor.arrow.set()
                 isSpacePressed = false
+                NSCursor.arrow.set()
+                isSpacePressed = false
                 isPanning = false
+            }
+            .onChange(of: files) { newFiles in
+                appState.isStitchingDirty = !newFiles.isEmpty
+            }
+            // 🔥 Sync State on Appear
+            .onAppear {
+                activeDirection = direction // Initialize from Storage
+                appState.isStitchingDirty = !files.isEmpty
+                
+                // Register Save Action
+                appState.requestSaveAction = {
+                    await startStitching()
+                }
+            }
+            .onChange(of: activeDirection) { newDir in
+                // Async sync back to Storage to avoid animation glitches
+                directionStr = newDir == .horizontal ? "horizontal" : "vertical"
             }
             //.zIndex(1) // Removed zIndex as HSplitView handles layering differently
 
@@ -458,7 +477,8 @@ struct ImageStitchingView: View, Sendable {
         // 🔥 使用 AnyLayout 保持视图层级一致性 (View Identity Preservation)
         // 这样当布局从 Vertical 切换到 Horizontal 时，子视图 (ForEach) 不会被销毁重建
         //从而 dragGesture 不会被打断！这就是"卡住"的原因。
-        let layout = direction == .vertical 
+        //从而 dragGesture 不会被打断！这就是"卡住"的原因。
+        let layout = activeDirection == .vertical 
             ? AnyLayout(VStackLayout(spacing: 16))
             : AnyLayout(HStackLayout(spacing: 16))
             
@@ -470,7 +490,7 @@ struct ImageStitchingView: View, Sendable {
     @ViewBuilder
     func cardsView(containerSize: CGSize) -> some View {
         ForEach(files, id: \.self) { url in
-            StitchImageCard(url: url, direction: direction, isSelected: selection.contains(url), onDelete: {
+            StitchImageCard(url: url, direction: activeDirection, isSelected: selection.contains(url), onDelete: {
                 withAnimation {
                     if let idx = files.firstIndex(of: url) { files.remove(at: idx) }
                 }
@@ -534,7 +554,7 @@ struct ImageStitchingView: View, Sendable {
         
         // 计算目标索引位移
         // 比如向右移了 200px -> 200/196 = 1 -> 目标索引 = 初始索引 + 1
-        let translation = direction == .vertical ? value.translation.height : value.translation.width
+        let translation = activeDirection == .vertical ? value.translation.height : value.translation.width
         let offsetStep = Int(round(translation / stride))
         
         var toIndex = startIndex + offsetStep
@@ -572,15 +592,18 @@ struct ImageStitchingView: View, Sendable {
         // 4. 智能边缘检测 (带 Debounce)
         let now = Date()
         if now.timeIntervalSince(lastLayoutSwitchTime) > 0.8 { // 0.8s Cooldown
-            if abs(value.translation.width) > 250 && direction == .vertical {
-                 withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-                     directionStr = "horizontal"
+            // 🔥 Tuned Threshold: 150 for V->H (Horizontal Drag)
+            // 🔥 Tuned Animation: Damping 0.85
+            if abs(value.translation.width) > 150 && activeDirection == .vertical {
+                 withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                     activeDirection = .horizontal
                  }
                  lastLayoutSwitchTime = now
                  NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
-            } else if abs(value.translation.height) > 250 && direction == .horizontal {
-                 withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-                     directionStr = "vertical"
+            // 🔥 Tuned Threshold: 100 (was 150) for H->V (Vertical Drag) to feel easier
+            } else if abs(value.translation.height) > 100 && activeDirection == .horizontal {
+                 withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                     activeDirection = .vertical
                  }
                  lastLayoutSwitchTime = now
                  NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
@@ -628,14 +651,15 @@ struct ImageStitchingView: View, Sendable {
         }
     }
     
-    func startStitching() {
-        guard files.count > 1, !isProcessing else { return }
+    @discardableResult
+    func startStitching() async -> Bool {
+        guard files.count > 1, !isProcessing else { return false }
         isProcessing = true
         let ordered = files
-        Task {
-            await ImageStitcher.processOrdered(imageURLs: ordered, direction: direction)
-            isProcessing = false
-        }
+        // We must await the result
+        let success = await ImageStitcher.processOrdered(imageURLs: ordered, direction: activeDirection)
+        isProcessing = false
+        return success
     }
 
     // MARK: - Selection Logic
@@ -717,7 +741,7 @@ struct ImageStitchingView: View, Sendable {
             guard let size = itemSizes[url] else { continue }
             
             let frame: CGRect
-            if direction == .vertical {
+            if activeDirection == .vertical {
                 // Centered horizontally in contentSize
                 // Note: contentSize includes Zoom? No, we used `max(1, contentSize.width)` in minimap.
                 // In `layoutContainer`, we use `AnyLayout` with `cardsView`.
@@ -798,9 +822,14 @@ struct ImageStitchingView: View, Sendable {
         VStack(spacing: 0) {
             Form {
                 Section("布局设置") {
-                    Picker("拼接方向", selection: Binding(get: { direction }, set: {
-                        directionStr = $0 == .horizontal ? "horizontal" : "vertical"
-                    })) {
+                    Picker("拼接方向", selection: Binding(
+                        get: { activeDirection },
+                        set: { newValue in
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                activeDirection = newValue
+                            }
+                        }
+                    )) {
                         Text("纵向").tag(ImageStitcher.StitchDirection.vertical)
                         Text("横向").tag(ImageStitcher.StitchDirection.horizontal)
                     }
@@ -824,7 +853,9 @@ struct ImageStitchingView: View, Sendable {
             Divider()
             
             VStack(spacing: 16) {
-                Button(action: startStitching) {
+                Button(action: {
+                    Task { await startStitching() }
+                }) {
                     HStack(spacing: 8) {
                         if isProcessing {
                             ProgressView().controlSize(.small)
@@ -1084,23 +1115,26 @@ struct MinimapView: View {
                             .frame(width: max(4, viewportRectW), height: max(4, viewportRectH))
                             .position(x: boxAbsX + viewportRectW/2, y: boxAbsY + viewportRectH/2) // Posiiton 使用中心坐标
                             .shadow(color: .black.opacity(0.3), radius: 2)
-                            .gesture(
-                                DragGesture()
-                                    .onChanged { value in
-                                        if dragStartOffset == nil { dragStartOffset = canvasOffset }
-                                        guard let start = dragStartOffset else { return }
-                                        
-                                        // 逆向计算：Box 移动 delta -> Canvas Offset 变化 -delta
-                                        let factor = zoomScale / mapScale
-                                        let deltaX = value.translation.width * factor
-                                        let deltaY = value.translation.height * factor
-                                        
-                                        canvasOffset = CGPoint(x: start.x - deltaX, y: start.y - deltaY)
-                                    }
-                                    .onEnded { _ in dragStartOffset = nil }
-                            )
+                            // Gesture removed from here
                     }
+                    .frame(width: mapSize.width, height: mapSize.height) // 🔥 Force Frame
+                    .contentShape(Rectangle()) // 🔥 Hit Test Limit
                     .clipped()
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                if dragStartOffset == nil { dragStartOffset = canvasOffset }
+                                guard let start = dragStartOffset else { return }
+                                
+                                // 逆向计算：Box 移动 delta -> Canvas Offset 变化 -delta
+                                let factor = zoomScale / mapScale
+                                let deltaX = value.translation.width * factor
+                                let deltaY = value.translation.height * factor
+                                
+                                canvasOffset = CGPoint(x: start.x - deltaX, y: start.y - deltaY)
+                            }
+                            .onEnded { _ in dragStartOffset = nil }
+                    )
                 }
                 .frame(width: 160, height: 160)
                 .background(.ultraThinMaterial) // 移除灰色背景，只保留高斯模糊，更清爽
@@ -1121,12 +1155,16 @@ struct MinimapView: View {
             ForEach(files.prefix(limit), id: \.self) { url in
                 ZStack {
                     Color(nsColor: .controlBackgroundColor)
-                    AsyncThumbnailView(url: url, maxSize: 50)
+                    // 🔥 Fix 2: Increase resolution to 300px for retina displays
+                    AsyncThumbnailView(url: url, maxSize: 300)
                         .padding(4)
                 }
-                // 🔥 关键：强制尺寸一致
-                .frame(width: direction == .vertical ? 220 : nil,
-                       height: direction == .horizontal ? 220 : nil)
+                // 🔥 Fix 1: Unify layout logic with main view
+                // Always use fixed width 220, height is auto (aspect ratio)
+                // This ensures the minimap layout identical to the main canvas
+                .frame(width: 220)
+                .fixedSize(horizontal: false, vertical: true)
+                
                 .aspectRatio(contentMode: .fit)
                 .cornerRadius(12)
                 .shadow(color: .black.opacity(0.2), radius: 4)
@@ -1134,8 +1172,7 @@ struct MinimapView: View {
             if files.count > limit {
                 Rectangle()
                     .fill(Color.secondary.opacity(0.2))
-                    .frame(width: direction == .vertical ? 220 : 50,
-                           height: direction == .horizontal ? 220 : 50)
+                    .frame(width: 220, height: 220) // Placeholder also fixed width? Or just square.
             }
         }
     

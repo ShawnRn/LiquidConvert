@@ -38,6 +38,7 @@ struct SettingsView: View {
     @State private var avatarRefreshID = UUID()
     @State private var hoverReset = false
     @State private var isAvatarHovered = false // 🔥 头像悬浮状态
+    @State private var showLicense = false // 许可页面状态
     
     // 🔥 焦点管理：解决回车全选问题
     @FocusState private var focusedField: Field?
@@ -233,6 +234,22 @@ struct SettingsView: View {
                                 .foregroundColor(.secondary)
                         }
 
+                        // 开源许可与 GitHub 按钮
+                        HStack(spacing: 40) {
+                            AboutCircularButton(icon: "doc.text.fill", title: "开源许可") {
+                                showLicense = true
+                            }
+                            .sheet(isPresented: $showLicense) {
+                                LicenseView()
+                            }
+                            
+                            AboutCircularButton(icon: "globe", title: "GitHub") {
+                                if let url = URL(string: "https://github.com/ShawnRn/LiquidConvert") {
+                                    NSWorkspace.shared.open(url)
+                                }
+                            }
+                        }
+
                         // 重置所有设置按钮
                         Button(action: {
                             resetAllSettings()
@@ -255,6 +272,38 @@ struct SettingsView: View {
                         .scaleEffect(hoverReset ? 0.98 : 1.0)
                         .animation(.spring(response: 0.3), value: hoverReset)
                         .onHover { hoverReset = $0 }
+                        
+                        // 底部签名
+                        VStack(spacing: 4) {
+                            HStack(spacing: 4) {
+                                Text("Made with")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                Image(systemName: "heart.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.red)
+                                Text("by Shawn Rain")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Text("shawnrain.me@gmail.com")
+                                .font(.system(size: 11))
+                                .foregroundColor(.blue)
+                                .onTapGesture {
+                                    if let url = URL(string: "mailto:shawnrain.me@gmail.com") {
+                                        NSWorkspace.shared.open(url)
+                                    }
+                                }
+                                .onHover { hovering in
+                                    if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+                                }
+                            
+                            Text("MIT Copyright (c) 2026-present Shawn Rain")
+                                .font(.system(size: 10))
+                                .foregroundColor(.tertiaryLabel)
+                                .padding(.top, 4)
+                        }
                     }
                     .padding(.top, 20)
                 }

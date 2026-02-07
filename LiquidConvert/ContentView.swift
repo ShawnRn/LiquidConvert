@@ -24,6 +24,18 @@ struct ContentView: View {
     
     // Animation Namespace
     @Namespace private var animation
+    
+    // 🔥 Custom Binding for Navigation interception
+    var navigationBinding: Binding<TabIdentifier?> {
+        Binding(
+            get: { appState.selectedTab },
+            set: { newValue in
+                if let tab = newValue {
+                    appState.requestTabChange(to: tab)
+                }
+            }
+        )
+    }
 
     var body: some View {
         // 🔥 核心改变：使用原生分栏视图
@@ -38,15 +50,15 @@ struct ContentView: View {
                 // 导航列表
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 4) {
-                        SidebarItem(icon: "house.fill", title: "主页", id: .home, selected: $appState.selectedTab, namespace: animation)
+                        SidebarItem(icon: "house.fill", title: "主页", id: .home, selected: navigationBinding, namespace: animation)
                         
 
                             
-                        SidebarItem(icon: "music.note", title: "音频转换", id: .audio, selected: $appState.selectedTab, namespace: animation)
-                        SidebarItem(icon: "photo.on.rectangle", title: "图片压缩", id: .compress, selected: $appState.selectedTab, namespace: animation)
-                        SidebarItem(icon: "square.fill.text.grid.1x2", title: "图片拼接", id: .stitch, selected: $appState.selectedTab, namespace: animation)
-                        SidebarItem(icon: "film", title: "视频 GIF", id: .videogif, selected: $appState.selectedTab, namespace: animation)
-                        SidebarItem(icon: "app.gift", title: "图标转换", id: .icns, selected: $appState.selectedTab, namespace: animation)
+                        SidebarItem(icon: "music.note", title: "音频转换", id: .audio, selected: navigationBinding, namespace: animation)
+                        SidebarItem(icon: "photo.on.rectangle", title: "图片压缩", id: .compress, selected: navigationBinding, namespace: animation)
+                        SidebarItem(icon: "square.fill.text.grid.1x2", title: "图片拼接", id: .stitch, selected: navigationBinding, namespace: animation)
+                        SidebarItem(icon: "film", title: "视频 GIF", id: .videogif, selected: navigationBinding, namespace: animation)
+                        SidebarItem(icon: "app.gift", title: "图标转换", id: .icns, selected: navigationBinding, namespace: animation)
                     }
                 }
                 
@@ -63,7 +75,7 @@ struct ContentView: View {
                                 .font(.system(size: 13, weight: .medium))
                         }
                         Spacer()
-                        Button(action: { appState.selectedTab = .settings }) {
+                        Button(action: { appState.requestTabChange(to: .settings) }) {
                             Image(systemName: "gearshape.fill")
                                 .foregroundStyle(appState.selectedTab == .settings ? .blue : .secondary)
                         }
@@ -88,7 +100,7 @@ struct ContentView: View {
                     Group {
                         switch tab {
                         case .home:
-                            HomeView(selectedTab: $appState.selectedTab)
+                            HomeView(selectedTab: navigationBinding)
                         case .audio:
                             AudioFunctionView()
                         case .compress:
@@ -111,6 +123,25 @@ struct ContentView: View {
         }
         // 设置样式为均衡模式 (sidebar + detail)
         .navigationSplitViewStyle(.balanced)
+        // 🔥 Unsaved Changes Alert
+        .alert("设置未保存", isPresented: $appState.showUnsavedAlert) {
+            Button("应用并离开", role: .none) {
+                Task {
+                    await appState.performSaveAndLeave()
+                }
+            }
+            .keyboardShortcut(.defaultAction)
+            
+            Button("放弃修改", role: .destructive) {
+                appState.confirmDiscardChanges()
+            }
+            
+            Button("取消", role: .cancel) {
+                appState.cancelNavigation()
+            }
+        } message: {
+            Text("您在图片拼接页面有未处理的图片。\n离开将导致当前进度丢失。")
+        }
     }
 }
 
@@ -188,7 +219,19 @@ struct SidebarButtonStyle: ButtonStyle {
 // 3. 改造后的 HomeView
 struct HomeView: View {
     @Binding var selectedTab: TabIdentifier?
-
+    @EnvironmentObject var appState: AppState // Receive AppState for method access
+    
+    // Helper to request change via AppState if available, or fall back to binding (Binding set logic in ContentView handles it if passed)
+    // But ContentView passes `$appState.selectedTab` to HomeView in ContentView.swift?
+    // Let's check ContentView.
+    // Line 91: HomeView(selectedTab: $appState.selectedTab)
+    // Wait, the binding passed to HomeView in ContentView is `$appState.selectedTab`.
+    // It sets the value directly.
+    // I should change ContentView to pass `navigationBinding` to HomeView too?
+    // OR HomeView uses `appState.requestTabChange` in buttons.
+    // Since HomeView takes `selectedTab` Binding, if I pass `navigationBinding`, `selectedTab = .audio` will trigger the setter in `navigationBinding`.
+    // That seems cleanest.
+    
     var body: some View {
         VStack(spacing: 0) {
             Spacer()

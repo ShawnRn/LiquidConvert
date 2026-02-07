@@ -29,13 +29,72 @@ class AppState: ObservableObject {
     // 🔥 全局 Tab 导航状态
     @Published var selectedTab: TabIdentifier? = .home
     
+    // 🚦 Navigation Guard State
+    @Published var isStitchingDirty = false
+    @Published var showUnsavedAlert = false
+    var pendingTab: TabIdentifier?
+    
     var openSettingsAction: (() -> Void)?
+
+    func requestTabChange(to tab: TabIdentifier) {
+        // Intercept navigation if leaving Stitching view with unsaved changes
+        if selectedTab == .stitch && isStitchingDirty && tab != .stitch {
+            print("⚠️ Stitching view is dirty, requesting confirmation")
+            pendingTab = tab
+            showUnsavedAlert = true
+        } else {
+            selectedTab = tab
+            pendingTab = nil
+        }
+    }
+    
+    func confirmDiscardChanges() {
+        if let target = pendingTab {
+            print("🗑️ Discarding changes, navigating to \(target)")
+            selectedTab = target
+            isStitchingDirty = false // Reset dirty state as view will be recreated
+        }
+        pendingTab = nil
+        showUnsavedAlert = false
+    }
+    
+    func cancelNavigation() {
+        print("❌ Navigation cancelled")
+        pendingTab = nil
+        showUnsavedAlert = false
+    }
+
+    // 💾 Save Interception
+    var requestSaveAction: (() async -> Bool)?
+    
+    func performSaveAndLeave() async {
+        print("💾 Requesting Save & Leave...")
+        guard let action = requestSaveAction else {
+            print("❌ No save action registered")
+            cancelNavigation()
+            return
+        }
+        
+        let success = await action()
+        if success {
+            print("✅ Save successful, navigating away")
+            confirmDiscardChanges()
+        } else {
+            print("❌ Save failed or cancelled, staying")
+            cancelNavigation()
+        }
+    }
 
     func openSettingsToAbout() {
         print("🔘 Menu 'About' clicked. Switching to Settings Tab")
         
-        // 直接切换到设置 Tab
-        selectedTab = .settings
+        // Use requestTabChange to ensure safety
+        requestTabChange(to: .settings)
+        // If navigation succeeds (or is forced later), we need to ensure right sub-tab
+        // But since requestTabChange might block, we should only set settingsTab if we actually move?
+        // For simplicity, we set it. If blocked, users stay in Stitching. 
+        // If they discard, they go to Settings. 
+        // However, if they stay, settingsTab is changed "in background" which is fine.
         settingsTab = .about
         
         // 确保应用激活
@@ -49,6 +108,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     private var didFinishLaunching = false
     // 🔥 标记是否需要隐藏窗口 (静默模式)
     private var shouldHideWindow = false
+
+    // 🔥 跟踪是否由文件拖放启动
+    private var isLaunchedByFileDrop = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("✅ App启动完成")
@@ -99,6 +161,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         print("🔵🔵🔵 [Dock] 收到 \(urls.count) 个URL (缓冲中...)")
         urls.forEach { print("   📄 \($0.path)") }
         
+        // 🔥 关键：如果在 App 启动完成前收到文件，说明是冷启动拖入
+        if !didFinishLaunching {
+            print("🚀 检测到冷启动拖入，标记为静默模式 & 自动退出")
+            isLaunchedByFileDrop = true
+            shouldHideWindow = true
+        }
+        
         pendingDropURLs.append(contentsOf: urls)
         resetDropTimer()
     }
@@ -106,6 +175,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     // 🔥 旧方法也保留（兼容性）
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
         print("🔵 [Dock-旧] 收到单个文件: \(filename) (缓冲中...)")
+        
+        if !didFinishLaunching {
+            isLaunchedByFileDrop = true
+            shouldHideWindow = true
+        }
+
         let url = URL(fileURLWithPath: filename)
         pendingDropURLs.append(url)
         resetDropTimer()
@@ -115,6 +190,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     // 🔥 旧方法也保留（兼容性）
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
         print("🔵 [Dock-旧] 收到多个文件: \(filenames.count) 个 (缓冲中...)")
+        
+        if !didFinishLaunching {
+            isLaunchedByFileDrop = true
+            shouldHideWindow = true
+        }
+
         let urls = filenames.map { URL(fileURLWithPath: $0) }
         pendingDropURLs.append(contentsOf: urls)
         resetDropTimer()
@@ -135,13 +216,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         
         print("🔥 [防抖触发] 最终处理 \(urls.count) 个文件")
 
-        // App 已完成启动 = App 已在运行，不应退出
-        let shouldQuitAfter = !didFinishLaunching
+        // 使用 flag 判断是否需要退出
+        let shouldQuitAfter = isLaunchedByFileDrop
         if shouldQuitAfter {
-            print("🔖 检测到：App由文件拖入启动，处理完成后将自动退出")
-            shouldHideWindow = true // 标记需隐藏窗口
+            print("🔖 取出模式：App由文件拖入启动，处理完成后将自动退出")
         } else {
-            print("🔖 检测到：App已在运行，处理完成后保持运行")
+            print("🔖 保持模式：App此前已在运行")
         }
 
         handleDroppedFiles(urls, shouldQuitAfter: shouldQuitAfter)
