@@ -12,14 +12,14 @@ import UniformTypeIdentifiers
 
 struct ImageConverter {
 
-    enum TargetFormat: String, CaseIterable {
+    enum TargetFormat: String, CaseIterable, Sendable {
         case jpeg = "JPG"
         case png = "PNG"
         case heic = "HEIC"
         case webp = "WEBP"
         case tiff = "TIFF"
 
-        var utType: UTType {
+        nonisolated var utType: UTType {
             switch self {
             case .jpeg: return .jpeg
             case .png: return .png
@@ -30,7 +30,7 @@ struct ImageConverter {
         }
 
         // 🔥 强制使用 .jpg 而不是 .jpeg
-        var fileExtension: String {
+        nonisolated var fileExtension: String {
             switch self {
             case .jpeg: return "jpg"
             case .png: return "png"
@@ -305,13 +305,13 @@ struct ImageConverter {
                 // 🔥 关键处理：删除源文件并处理替换逻辑
                 if isAlreadyJPG {
                     // 原文件是JPG：删除原文件，临时文件重命名为原文件名
-                    try FileManager.default.removeItem(at: url)
+                    try FileManager.default.trashItem(at: url, resultingItemURL: nil)
                     try FileManager.default.moveItem(at: outputURL, to: url)
                     successCount += 1
                     print("✅ 已替换原JPG: \(url.lastPathComponent) (自动压缩至 ≤5MB)")
                 } else {
                     // 原文件不是JPG：删除源文件，保留新生成的.jpg
-                    try FileManager.default.removeItem(at: url)
+                    try FileManager.default.trashItem(at: url, resultingItemURL: nil)
                     successCount += 1
                     print("✅ 已转换并删除: \(url.lastPathComponent) -> \(outputURL.lastPathComponent)")
                 }

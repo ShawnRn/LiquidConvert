@@ -364,7 +364,7 @@ struct AudioFunctionView: View, Sendable {
                 do {
                     try await Task.detached(priority: .userInitiated) {
                         let _ = try await AudioConverter.convert(inputURL: url, to: fmt)
-                        if shouldDelete { try? FileManager.default.removeItem(at: url) }
+                        if shouldDelete { try? FileManager.default.trashItem(at: url, resultingItemURL: nil) }
                     }.value
                     
                     self.conversionStatus[url] = "完成 ✅"

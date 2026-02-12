@@ -354,7 +354,7 @@ struct IconFunctionView: View, Sendable {
                     try await Task.detached(priority: .userInitiated) {
                         let _ = try await IconConverter.convert(
                             inputURL: url, targetFormat: target, generateIconSet: iconSet)
-                        if del { try? FileManager.default.removeItem(at: url) }
+                        if del { try? FileManager.default.trashItem(at: url, resultingItemURL: nil) }
                     }.value
                     
                     self.conversionStatus[url] = "完成 ✅"

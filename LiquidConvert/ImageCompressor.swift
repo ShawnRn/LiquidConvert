@@ -39,7 +39,7 @@ struct ImageCompressor {
                 let outputURL = generateOutputURL(from: inputURL, targetExtension: "gif")
                 try FileManager.default.copyItem(at: inputURL, to: outputURL)
                 if options.deleteOriginal {
-                    try? FileManager.default.removeItem(at: inputURL)
+                    try? FileManager.default.trashItem(at: inputURL, resultingItemURL: nil)
                 }
                 return outputURL
             }
@@ -84,7 +84,7 @@ struct ImageCompressor {
                 }
                 
                 if options.deleteOriginal {
-                    try? FileManager.default.removeItem(at: inputURL)
+                    try? FileManager.default.trashItem(at: inputURL, resultingItemURL: nil)
                 }
                 return outputURL
             }
@@ -146,7 +146,7 @@ struct ImageCompressor {
 
         // 7. 删除源文件（如果需要）
         if options.deleteOriginal {
-            try? FileManager.default.removeItem(at: inputURL)
+            try? FileManager.default.trashItem(at: inputURL, resultingItemURL: nil)
         }
 
         return outputURL
@@ -409,7 +409,7 @@ struct ImageCompressor {
         }
 
         if deleteOriginal {
-            try? FileManager.default.removeItem(at: inputURL)
+            try? FileManager.default.trashItem(at: inputURL, resultingItemURL: nil)
         }
 
         return outputURL
@@ -608,7 +608,7 @@ struct ImageCompressor {
 
         // 删除源文件（如果需要）
         if deleteOriginal {
-            try? FileManager.default.removeItem(at: inputURL)
+            try? FileManager.default.trashItem(at: inputURL, resultingItemURL: nil)
         }
 
         return outputURL

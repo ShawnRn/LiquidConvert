@@ -48,8 +48,9 @@ struct ImageStitchingView: View, Sendable {
     @AppStorage("stitch_direction") private var directionStr = "vertical"
     @AppStorage("stitch_quality") private var quality: Double = 0.9
     @AppStorage("stitch_target_format") private var targetFormat: ImageConverter.TargetFormat = .jpeg
+    @AppStorage("stitch_mobile_optimize") private var mobileOptimize: Bool = false
     
-    var direction: ImageStitcher.StitchDirection {
+    var direction: StitchDirection {
         get { directionStr == "horizontal" ? .horizontal : .vertical }
         set { directionStr = newValue == .horizontal ? "horizontal" : "vertical" }
     }
@@ -60,7 +61,7 @@ struct ImageStitchingView: View, Sendable {
     @State private var isTargeted = false // For external drops
     
     // 🔥 纯手势拖拽的核心状态
-    @State private var activeDirection: ImageStitcher.StitchDirection = .vertical // 🔥 Local State for smooth animation
+    @State private var activeDirection: StitchDirection = .vertical // 🔥 Local State for smooth animation
     @State private var draggingURL: URL? // 当前正在拖拽的文件 (Data Source)
     @State private var dragLocation: CGPoint = .zero // 拖拽的全局坐标 (Visual Source)
     @State private var initialDragIndex: Int? // 拖拽开始时的索引 (计算基准)
@@ -280,7 +281,7 @@ struct ImageStitchingView: View, Sendable {
                                 VStack(spacing: 16) {
                                     ForEach(itemsToDrag, id: \.self) { url in
                                         let capturedSize = itemSizes[url]
-                                        StitchImageCard(url: url, direction: activeDirection, isSelected: false, onDelete: {})
+                                        StitchImageCard(url: url, direction: activeDirection, isSelected: false, zoomScale: zoomScale, onDelete: {})
                                             .frame(width: capturedSize?.width, height: capturedSize?.height)
                                     }
                                 }
@@ -288,7 +289,7 @@ struct ImageStitchingView: View, Sendable {
                                 HStack(spacing: 16) {
                                     ForEach(itemsToDrag, id: \.self) { url in
                                         let capturedSize = itemSizes[url]
-                                        StitchImageCard(url: url, direction: activeDirection, isSelected: false, onDelete: {})
+                                        StitchImageCard(url: url, direction: activeDirection, isSelected: false, zoomScale: zoomScale, onDelete: {})
                                             .frame(width: capturedSize?.width, height: capturedSize?.height)
                                     }
                                 }
@@ -438,7 +439,7 @@ struct ImageStitchingView: View, Sendable {
                 isSpacePressed = false
                 isPanning = false
             }
-            .onChange(of: files) { newFiles in
+            .onChange(of: files) { _, newFiles in
                 appState.isStitchingDirty = !newFiles.isEmpty
             }
             // 🔥 Sync State on Appear
@@ -451,7 +452,7 @@ struct ImageStitchingView: View, Sendable {
                     await startStitching()
                 }
             }
-            .onChange(of: activeDirection) { newDir in
+            .onChange(of: activeDirection) { _, newDir in
                 // Async sync back to Storage to avoid animation glitches
                 directionStr = newDir == .horizontal ? "horizontal" : "vertical"
             }
@@ -490,7 +491,7 @@ struct ImageStitchingView: View, Sendable {
     @ViewBuilder
     func cardsView(containerSize: CGSize) -> some View {
         ForEach(files, id: \.self) { url in
-            StitchImageCard(url: url, direction: activeDirection, isSelected: selection.contains(url), onDelete: {
+            StitchImageCard(url: url, direction: activeDirection, isSelected: selection.contains(url), zoomScale: zoomScale, onDelete: {
                 withAnimation {
                     if let idx = files.firstIndex(of: url) { files.remove(at: idx) }
                 }
@@ -656,8 +657,28 @@ struct ImageStitchingView: View, Sendable {
         guard files.count > 1, !isProcessing else { return false }
         isProcessing = true
         let ordered = files
-        // We must await the result
-        let success = await ImageStitcher.processOrdered(imageURLs: ordered, direction: activeDirection)
+        let dir = activeDirection
+        let format = targetFormat
+        let q = quality
+        let opt = mobileOptimize
+        
+        // 显式使用 .userInitiated 优先级以避免优先级反转警告 (Hang Risk)
+        let success = await Task(priority: .userInitiated) {
+            await ImageStitcher.processOrdered(
+                imageURLs: ordered,
+                direction: dir,
+                targetFormat: format,
+                quality: q,
+                mobileOptimize: opt
+            )
+        }.value
+        
+        if success {
+            withAnimation {
+                files.removeAll()
+                selection.removeAll()
+            }
+        }
         isProcessing = false
         return success
     }
@@ -830,8 +851,8 @@ struct ImageStitchingView: View, Sendable {
                             }
                         }
                     )) {
-                        Text("纵向").tag(ImageStitcher.StitchDirection.vertical)
-                        Text("横向").tag(ImageStitcher.StitchDirection.horizontal)
+                        Text("纵向").tag(StitchDirection.vertical)
+                        Text("横向").tag(StitchDirection.horizontal)
                     }
                     .pickerStyle(.segmented)
                 }
@@ -844,6 +865,9 @@ struct ImageStitchingView: View, Sendable {
                     Slider(value: $quality, in: 0.1...1.0) {
                          Text("质量 \(Int(quality * 100))%")
                     }
+                    
+                    Toggle("适合移动设备", isOn: $mobileOptimize)
+                        .help("以 iPhone 17 标准版 (1206px) 为基准优化拼接图尺寸")
                 }
             }
             .formStyle(.grouped)
@@ -889,40 +913,45 @@ struct ImageStitchingView: View, Sendable {
     
     struct StitchImageCard: View {
         let url: URL
-        let direction: ImageStitcher.StitchDirection
-        let isSelected: Bool // ✨ Added Selection State
+        let direction: StitchDirection
+        let isSelected: Bool 
+        let zoomScale: CGFloat // ✨ Pass zoomScale to maintain button sharpness
         let onDelete: () -> Void
         @State private var isHovering = false
         
         var body: some View {
-            // 🔥 Performance Fix: Remove ZStack to prevent layout ambiguity
             VStack(spacing: 0) {
                 AsyncThumbnailView(url: url, maxSize: 1500)
-                    .padding(8) // Inner white frame
+                    .padding(8)
             }
-            // 🔥 Layout Fix: Use fixed width for BOTH directions
-            // This ensures cards appear identical regardless of layout direction
-            // Height is determined by image aspect ratio
-            .frame(width: 220)
-            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: direction == .vertical ? 220 : nil, height: direction == .horizontal ? 220 : nil)
+            .fixedSize(horizontal: direction == .horizontal, vertical: direction == .vertical)
             .background(Color(nsColor: .controlBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
-            // Selection Border Overlay (Blue if selected, Hover otherwise)
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isSelected ? Color.blue : (isHovering ? Color.blue.opacity(0.5) : Color.clear), lineWidth: isSelected ? 3 : 2)
+                    .stroke(isSelected ? Color.blue : (isHovering ? Color.blue.opacity(0.5) : Color.white.opacity(0.1)), lineWidth: isSelected ? 3 : (isHovering ? 2 : 1))
             )
-            // Delete Button Overlay (Fully isolated from layout)
             .overlay(alignment: .topTrailing) {
-                if isHovering || isSelected { // Show button if selected too? Or just hover? Finder shows nothing. But let's keep hover.
+                if isHovering || isSelected {
                     if isHovering {
                         Button(action: onDelete) {
+                            let baseSize: CGFloat = 20
+                            let targetSize = baseSize * max(1.0, zoomScale)
+                            
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 20))
+                                .font(.system(size: targetSize))
                                 .foregroundStyle(.white, .red.opacity(0.9))
-                                .background(Circle().fill(.white).padding(2))
-                                .shadow(radius: 2)
+                                .background(
+                                    Circle()
+                                        .fill(.white)
+                                        // Padding also needs to be larger for high-res Circle background
+                                        .padding(2 * max(1.0, zoomScale))
+                                )
+                                .scaleEffect(1.0 / max(1.0, zoomScale))
+                                .frame(width: baseSize, height: baseSize) // 🔥 Force fixed layout size back to original to keep alignment static
+                                .shadow(color: .black.opacity(0.2), radius: 2)
                         }
                         .buttonStyle(.plain)
                         .offset(x: 8, y: -8)
@@ -1021,7 +1050,7 @@ struct ImageStitchingView: View, Sendable {
     
 // MARK: - Reusable Layout
 struct StitchingLayout<Content: View>: View {
-    let direction: ImageStitcher.StitchDirection
+    let direction: StitchDirection
     let spacing: CGFloat
     @ViewBuilder var content: () -> Content
     
@@ -1036,7 +1065,7 @@ struct StitchingLayout<Content: View>: View {
 
 struct MinimapView: View {
         let files: [URL]
-        let direction: ImageStitcher.StitchDirection
+        let direction: StitchDirection
         let contentSize: CGSize
         let viewportSize: CGSize
         @Binding var canvasOffset: CGPoint

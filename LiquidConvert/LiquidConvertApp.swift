@@ -261,8 +261,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             
             // 🔥 分支逻辑：单张图 vs 多张图
             if imageFiles.count > 1 {
-                print("🧩 检测到多张图片，进入拼接模式")
-                await ImageStitcher.process(imageURLs: imageFiles)
+                print("🧩 检测到多张图片，进入拼接模式 (isSilent: \(shouldQuitAfter))")
+                await ImageStitcher.process(imageURLs: imageFiles, isSilent: shouldQuitAfter)
             } else {
                 print("🔄 检测到单张图片，进入普通转换模式")
                 await ImageConverter.convertSilently(imageURLs: imageFiles)

@@ -406,7 +406,7 @@ struct VideoGifFunctionView: View, Sendable {
                 do {
                     try await Task.detached(priority: .userInitiated) {
                         let _ = try await VideoGifConverter.convert(inputURL: url, config: conf)
-                        if d { try? FileManager.default.removeItem(at: url) }
+                        if d { try? FileManager.default.trashItem(at: url, resultingItemURL: nil) }
                     }.value
                     
                     self.conversionStatus[url] = "完成 ✅"
