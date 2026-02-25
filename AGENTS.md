@@ -50,10 +50,11 @@
     - 废弃 `copyCGImage(at:actualTime:)` -> 选用异步的 `generator.image(at:)`。
 - **并发安全**：严禁在异步 Task 中直接读写共享的可变状态（如 `Array.append`），必须切换回 `@MainActor` 执行。
 
-### 5. 高性能图片处理 (10000px+ 级)
+### 6. 核心技术沉淀 (Knowledge Index)
 
-- **内存缩放安全**：对于中间尺寸（TargetSize * 2）超过 **4096px** 的场景，**必须**跳过超采样（Supersampling）流程，直接使用单次高质量缩放，以防止 `IOSurface` 创建失败。
-- **零 I/O 估算**：体积测试逻辑应优先使用内存 `NSMutableData`，避免产生磁盘 I/O 性能瓶颈。
+- [性能审计与架构心得 (2026-02)](file:///.agent/PERFORMANCE_AUDIT.md): 深度记录了关于 SwiftUI 渲染隔离、超大图内存管理及自然排序的核心规准。
+- [并发与 API 规范](file:///.agent/CONCURRENCY_&_API.md): 详细记录了针对 Swift 6 和 macOS 15 的现代化适配规则。
+- [Release 发布约定](file:///.agent/RELEASE_RULES.md): 规范了版本号同步、DMG 封装及 Sparkle 更新的全流程。
 
 ## 发布流程约定 (Release Workflow)
 
