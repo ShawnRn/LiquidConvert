@@ -3,6 +3,14 @@
     <channel>
         <item>
             <title>2.5</title>
+            <pubDate>Wed, 25 Feb 2026 09:32:19 +0800</pubDate>
+            <sparkle:version>2026022501</sparkle:version>
+            <sparkle:shortVersionString>2.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v2.5/LiquidConvert_2.5.dmg" type="application/octet-stream" sparkle:edSignature="+Nmb+l0uWt4kf8AwVud7bmp9iTSkIQMGyhqBPXAlCR9Z0ov2pHPUTtPUS5jdp1ybTxHMX1XDbbNnocVdFkLpCw==" length="4004281"/>
+        </item>
+        <item>
+            <title>2.5</title>
             <pubDate>Wed, 25 Feb 2026 09:23:13 +0800</pubDate>
             <sparkle:version>2026022500</sparkle:version>
             <sparkle:shortVersionString>2.5</sparkle:shortVersionString>
