@@ -302,16 +302,16 @@ struct ImageConverter {
                         userInfo: [NSLocalizedDescriptionKey: "写入文件失败"])
                 }
 
-                // 🔥 关键处理：删除源文件并处理替换逻辑
+                // 🔥 关键处理：使用安全处理器处理删除和替换逻辑
                 if isAlreadyJPG {
                     // 原文件是JPG：删除原文件，临时文件重命名为原文件名
-                    try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-                    try FileManager.default.moveItem(at: outputURL, to: url)
+                    try FileSafeHandler.safeTrashItem(at: url)
+                    try FileSafeHandler.safeMoveItem(at: outputURL, to: url)
                     successCount += 1
                     print("✅ 已替换原JPG: \(url.lastPathComponent) (自动压缩至 ≤5MB)")
                 } else {
                     // 原文件不是JPG：删除源文件，保留新生成的.jpg
-                    try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                    try FileSafeHandler.safeTrashItem(at: url)
                     successCount += 1
                     print("✅ 已转换并删除: \(url.lastPathComponent) -> \(outputURL.lastPathComponent)")
                 }

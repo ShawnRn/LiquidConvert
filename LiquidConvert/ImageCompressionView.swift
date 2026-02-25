@@ -285,6 +285,8 @@ struct ImageCompressionView: View, Sendable {
         let status: String
         let statusColor: Color
         @Environment(\.colorScheme) private var colorScheme
+        
+        @State private var icon: NSImage = NSImage(systemSymbolName: "photo.fill", accessibilityDescription: nil)!
 
         var body: some View {
             HStack(spacing: 16) {
@@ -298,14 +300,14 @@ struct ImageCompressionView: View, Sendable {
                                 .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5)
                         }
                     
-                    Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                    Image(nsImage: icon)
                         .resizable()
                         .interpolation(.high)
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 28, height: 28)
                         .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
                 }
-
+                
                 VStack(alignment: .leading, spacing: 4) {
                     Text(url.lastPathComponent)
                         .font(.system(size: 13, weight: .semibold))
@@ -346,6 +348,16 @@ struct ImageCompressionView: View, Sendable {
             .contextMenu {
                 Button("在 Finder 中显示") {
                     NSWorkspace.shared.activateFileViewerSelecting([url])
+                }
+            }
+            .onAppear { loadIcon() }
+        }
+
+        private func loadIcon() {
+            Task.detached(priority: .userInitiated) {
+                let loadedIcon = NSWorkspace.shared.icon(forFile: url.path)
+                await MainActor.run {
+                    self.icon = loadedIcon
                 }
             }
         }

@@ -35,6 +35,7 @@ struct VideoGifConverter {
         var speed: Double  // 0.5x ~ 2.0x
         var reverse: Bool  // 是否倒放
         var quality: Double  // 0.0 ~ 1.0 (色彩品质)
+        var trimRange: ClosedRange<Double>? // 🔥 新增：剪辑范围 (秒)
     }
 
     // 统一入口
@@ -84,15 +85,20 @@ struct VideoGifConverter {
         generator.maximumSize = CGSize(width: pixelWidth, height: pixelWidth)
 
         // 2. 计算帧与时间
-        let duration = try await asset.load(.duration).seconds
-        let totalFrames = Int(duration * Double(config.fps))
+        let assetDuration = try await asset.load(.duration).seconds
+        let startTime = config.trimRange?.lowerBound ?? 0
+        let endTime = config.trimRange?.upperBound ?? assetDuration
+        let trimDuration = endTime - startTime
+        
+        let totalFrames = Int(trimDuration * Double(config.fps))
         let frameDelay = (1.0 / Double(config.fps)) / config.speed
 
         // 3. 生成时间点
         var times: [CMTime] = []
         let captureInterval = 1.0 / Double(config.fps)
         for i in 0..<totalFrames {
-            let time = CMTime(seconds: Double(i) * captureInterval, preferredTimescale: 600)
+            let seconds = startTime + (Double(i) * captureInterval)
+            let time = CMTime(seconds: seconds, preferredTimescale: 600)
             times.append(time)
         }
 

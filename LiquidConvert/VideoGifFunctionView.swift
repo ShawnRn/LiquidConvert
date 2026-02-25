@@ -26,6 +26,11 @@ struct VideoGifFunctionView: View, Sendable {
     @State private var totalCount: Int = 0
     @State private var processedCount: Int = 0
     @State private var selection: Set<URL> = []
+    
+    // 剪辑状态
+    @State private var trimRanges: [URL: ClosedRange<Double>] = [:]
+    @State private var curTrimURL: URL? = nil
+    @State private var showingTrimView = false
 
     var progress: Double {
         guard totalCount > 0 else { return 0 }
@@ -87,7 +92,11 @@ struct VideoGifFunctionView: View, Sendable {
                                 url: url, 
                                 status: status(for: url), 
                                 statusColor: statusColor(for: url),
-                                icon: fileIcon(for: url)
+                                icon: fileIcon(for: url),
+                                onTrim: {
+                                    curTrimURL = url
+                                    showingTrimView = true
+                                }
                             )
                             .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                             .listRowSeparator(.visible, edges: .bottom)
@@ -243,6 +252,28 @@ struct VideoGifFunctionView: View, Sendable {
             case .failure(let error): print("File selection error: \(error.localizedDescription)")
             }
         }
+        .sheet(isPresented: $showingTrimView) {
+            if let url = curTrimURL {
+                VideoTrimView(
+                    url: url,
+                    trimRange: Binding(
+                        get: { trimRanges[url] ?? 0...0 },
+                        set: { trimRanges[url] = $0 }
+                    ),
+                    onConfirm: {
+                        showingTrimView = false
+                    },
+                    onCancel: {
+                        // 🔥 交互优化：点叉直接从列表移除该视频
+                        if let index = files.firstIndex(of: url) {
+                            files.remove(at: index)
+                            totalCount -= 1
+                        }
+                        showingTrimView = false
+                    }
+                )
+            }
+        }
     }
 
     // Row View
@@ -251,6 +282,7 @@ struct VideoGifFunctionView: View, Sendable {
         let status: String
         let statusColor: Color
         let icon: Image
+        let onTrim: () -> Void
         @Environment(\.colorScheme) private var colorScheme
 
         var body: some View {
@@ -258,11 +290,11 @@ struct VideoGifFunctionView: View, Sendable {
                 // 左侧图表：更大且有磨砂感
                 ZStack {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.purple.opacity(0.1))
+                        .fill(Color.yellow.opacity(0.1))
                         .frame(width: 44, height: 44)
                         .overlay {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(Color.purple.opacity(0.15), lineWidth: 0.5)
+                                .strokeBorder(Color.yellow.opacity(0.15), lineWidth: 0.5)
                         }
                     
                     icon
@@ -270,8 +302,8 @@ struct VideoGifFunctionView: View, Sendable {
                         .interpolation(.high)
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 24, height: 24)
-                        .foregroundColor(.purple)
-                        .shadow(color: Color.purple.opacity(0.2), radius: 2, x: 0, y: 1)
+                        .foregroundColor(.yellow)
+                        .shadow(color: Color.yellow.opacity(0.2), radius: 2, x: 0, y: 1)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -298,6 +330,20 @@ struct VideoGifFunctionView: View, Sendable {
                 
                 Spacer()
                 
+                // 剪辑按钮
+                if status == "等待中" {
+                    Button(action: onTrim) {
+                        Image(systemName: "scissors")
+                            .font(.system(size: 14))
+                            .foregroundColor(.yellow)
+                            .padding(6)
+                            .background(Color.yellow.opacity(0.1))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("剪辑时间段")
+                }
+
                 // 右侧格式标签：更精致
                 Text(url.pathExtension.uppercased())
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -371,16 +417,17 @@ struct VideoGifFunctionView: View, Sendable {
             }.value
             
             withAnimation {
-                var addedAny = false
                 for url in finalFiles {
                     if !self.files.contains(url) {
                         self.files.append(url)
                         self.totalCount += 1
-                        addedAny = true
                     }
                 }
-                if addedAny && !isProcessing {
-                    startConversion()
+                
+                // 🔥 智能交互：如果是单文件拖入，直接自动打开剪辑器
+                if finalFiles.count == 1, let first = finalFiles.first {
+                    curTrimURL = first
+                    showingTrimView = true
                 }
             }
         }
@@ -388,6 +435,10 @@ struct VideoGifFunctionView: View, Sendable {
 
     func startConversion() {
         guard !files.isEmpty, !isProcessing else { return }
+        
+        // 🔥 即时反馈：发送开始处理通知
+        NotificationManager.send(title: "开始处理", subtitle: "正在为您准备 \(files.count) 个文件...")
+        
         isProcessing = true
         let conf = VideoGifConverter.Config(
             format: targetFormat, fps: Int(fps), targetWidth: targetWidth, speed: speed,
@@ -404,8 +455,18 @@ struct VideoGifFunctionView: View, Sendable {
                 
                 // 3. 执行转换
                 do {
+                    let range = trimRanges[url]
                     try await Task.detached(priority: .userInitiated) {
-                        let _ = try await VideoGifConverter.convert(inputURL: url, config: conf)
+                        let configWithTrim = VideoGifConverter.Config(
+                            format: conf.format,
+                            fps: conf.fps,
+                            targetWidth: conf.targetWidth,
+                            speed: conf.speed,
+                            reverse: conf.reverse,
+                            quality: conf.quality,
+                            trimRange: range
+                        )
+                        let _ = try await VideoGifConverter.convert(inputURL: url, config: configWithTrim)
                         if d { try? FileManager.default.trashItem(at: url, resultingItemURL: nil) }
                     }.value
                     
@@ -424,7 +485,11 @@ struct VideoGifFunctionView: View, Sendable {
         }
     }
 
-    func status(for url: URL) -> String { conversionStatus[url] ?? "等待中" }
+    func status(for url: URL) -> String { 
+        if let s = conversionStatus[url] { return s }
+        return "等待中"
+    }
+    
     func statusColor(for url: URL) -> Color {
         let s = conversionStatus[url]
         if s?.contains("完成") == true { return .green }

@@ -11,6 +11,27 @@ import UserNotifications
 import SwiftUI
 import UniformTypeIdentifiers
 
+// MARK: - 统一缩略图缓存 (NSCache 版)
+final class ThumbnailCache: @unchecked Sendable {
+    static let shared = ThumbnailCache()
+    private let cache = NSCache<NSString, NSImage>()
+    
+    private init() {
+        cache.countLimit = 500 // 限制缓存数量
+        cache.totalCostLimit = 128 * 1024 * 1024 // 额外限制总内存 (128MB)
+    }
+    
+    func image(for url: URL, size: CGFloat) -> NSImage? {
+        let key = "\(url.path)_\(Int(size))" as NSString
+        return cache.object(forKey: key)
+    }
+    
+    func insert(_ image: NSImage, for url: URL, size: CGFloat) {
+        let key = "\(url.path)_\(Int(size))" as NSString
+        cache.setObject(image, forKey: key)
+    }
+}
+
 // MARK: - 通知管理器
 struct NotificationManager {
     static func send(title: String, subtitle: String = "") {
@@ -257,5 +278,72 @@ struct FileDropDelegate: DropDelegate {
             }
         }
         return true
+    }
+}
+
+// MARK: - 🔥 安全文件处理器 (针对 iCloud/同步盘优化)
+struct FileSafeHandler {
+    /// 安全地移动文件到废纸篓，带协调器和重试机制
+    static func safeTrashItem(at url: URL) throws {
+        let fileManager = FileManager.default
+        var lastError: Error?
+        
+        // 最多重试 3 次，每次间隔增加
+        for attempt in 1...3 {
+            do {
+                let coordinator = NSFileCoordinator()
+                var coordinatorError: NSError?
+                var internalError: Error?
+                
+                coordinator.coordinate(writingItemAt: url, options: .forDeleting, error: &coordinatorError) { newURL in
+                    do {
+                        try fileManager.trashItem(at: newURL, resultingItemURL: nil)
+                    } catch {
+                        internalError = error
+                    }
+                }
+                
+                if let error = internalError ?? coordinatorError {
+                    throw error
+                }
+                
+                if attempt > 1 { print("✅ [重试成功] 文件已移至废纸篓: \(url.lastPathComponent) (第 \(attempt) 次尝试)") }
+                return
+            } catch {
+                lastError = error
+                print("⚠️ [删除失败] \(url.lastPathComponent) - 尝试 \(attempt)/3: \(error.localizedDescription)")
+                
+                if attempt < 3 {
+                    // 递增延迟: 0.2s, 0.5s
+                    Thread.sleep(forTimeInterval: attempt == 1 ? 0.2 : 0.5)
+                }
+            }
+        }
+        
+        if let error = lastError {
+            throw error
+        }
+    }
+    
+    /// 安全地移动文件，带协调器
+    static func safeMoveItem(at src: URL, to dst: URL) throws {
+        let coordinator = NSFileCoordinator()
+        var coordinatorError: NSError?
+        var moveError: Error?
+        
+        coordinator.coordinate(writingItemAt: src, options: .forMoving, writingItemAt: dst, options: .forReplacing, error: &coordinatorError) { newSrc, newDst in
+            do {
+                if FileManager.default.fileExists(atPath: newDst.path) {
+                    try FileManager.default.removeItem(at: newDst)
+                }
+                try FileManager.default.moveItem(at: newSrc, to: newDst)
+            } catch {
+                moveError = error
+            }
+        }
+        
+        if let error = moveError ?? coordinatorError {
+            throw error
+        }
     }
 }

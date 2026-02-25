@@ -39,7 +39,9 @@ struct ImageCompressor {
                 let outputURL = generateOutputURL(from: inputURL, targetExtension: "gif")
                 try FileManager.default.copyItem(at: inputURL, to: outputURL)
                 if options.deleteOriginal {
-                    try? FileManager.default.trashItem(at: inputURL, resultingItemURL: nil)
+                    Task { @MainActor in
+                        try? FileSafeHandler.safeTrashItem(at: inputURL)
+                    }
                 }
                 return outputURL
             }
@@ -84,7 +86,9 @@ struct ImageCompressor {
                 }
                 
                 if options.deleteOriginal {
-                    try? FileManager.default.trashItem(at: inputURL, resultingItemURL: nil)
+                    Task { @MainActor in
+                        try? FileSafeHandler.safeTrashItem(at: inputURL)
+                    }
                 }
                 return outputURL
             }
@@ -146,7 +150,9 @@ struct ImageCompressor {
 
         // 7. 删除源文件（如果需要）
         if options.deleteOriginal {
-            try? FileManager.default.trashItem(at: inputURL, resultingItemURL: nil)
+            Task { @MainActor in
+                try? FileSafeHandler.safeTrashItem(at: inputURL)
+            }
         }
 
         return outputURL
@@ -214,77 +220,93 @@ struct ImageCompressor {
         let originalHeight = cgImage.height
         let maxDimension = max(originalWidth, originalHeight)
 
-        // 策略：先降低质量，再降低分辨率，分辨率下限 1080p
-        let qualitySteps = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3]
+        // 🚀 策略重构：(分辨率比例, 压缩质量) 的平衡组合序列
+        // 按照“画质优先”原则排列，优先在分辨率和质量间寻找甜点区
+        struct CompressionStep {
+            let scale: Double
+            let quality: Double
+        }
         
-        // 动态生成分辨率步进
-        // 逻辑：从 1.0 开始，每次减少 0.1，直到 longEdge 接近 1080
-        var currentScale = 1.0
-        let minLongEdge = 1080
+        var steps: [CompressionStep] = [
+            CompressionStep(scale: 1.0, quality: 0.85),
+            CompressionStep(scale: 1.0, quality: 0.8),
+            CompressionStep(scale: 0.9, quality: 0.8),
+            CompressionStep(scale: 0.9, quality: 0.75),
+            CompressionStep(scale: 0.8, quality: 0.75),
+            CompressionStep(scale: 0.8, quality: 0.7),
+            CompressionStep(scale: 0.7, quality: 0.7),
+            CompressionStep(scale: 0.7, quality: 0.65),
+            CompressionStep(scale: 0.6, quality: 0.65),
+            CompressionStep(scale: 0.6, quality: 0.6),
+            CompressionStep(scale: 0.5, quality: 0.6),
+            CompressionStep(scale: 0.5, quality: 0.5),
+            CompressionStep(scale: 0.4, quality: 0.5),
+            CompressionStep(scale: 0.3, quality: 0.5),
+            CompressionStep(scale: 0.2, quality: 0.5)
+        ]
         
-        while true {
-            let currentLongEdge = Int(Double(maxDimension) * currentScale)
-            
-            // 如果计算出的长边小于 1080，强制设为 1080 尝试一次，然后退出循环
-            // (除非原图本身就小于 1080，那就保持原图尺寸)
-            let effectiveScale: Double
-            let isFinalTry: Bool
-            
-            if currentLongEdge < minLongEdge && maxDimension > minLongEdge {
-                effectiveScale = Double(minLongEdge) / Double(maxDimension)
-                isFinalTry = true
-            } else {
-                effectiveScale = currentScale
-                isFinalTry = false
-            }
-            
-            // 内部循环：尝试不同质量
-            for quality in qualitySteps {
-                let resizeMode: ResizeMode =
-                    effectiveScale >= 0.99 ? .none : .longEdge(pixels: Int(Double(maxDimension) * effectiveScale))
-
-                let testImage =
-                    effectiveScale >= 0.99
-                    ? cgImage : try resizeImage(cgImage: cgImage, resizeMode: resizeMode)
-                let fileSize = try estimateFileSize(
-                    image: testImage, format: format, quality: quality, source: source)
-
-                let progressMsg =
-                    "🔍 测试: 分辨率×\(Int(effectiveScale*100))% (\(testImage.width)x\(testImage.height)), 质量\(Int(quality*100))% → \(String(format: "%.1f", Double(fileSize)/1_000_000))MB"
-                progressCallback?(progressMsg)
-                print(progressMsg)
-                Thread.sleep(forTimeInterval: 0.05)  // 50ms延迟让进度可见
-
-                if fileSize <= targetSize && fileSize > 0 {
-                    print("✅ 最佳参数: 分辨率×\(Int(effectiveScale*100))%, 质量\(Int(quality*100))%")
-                    return try finalizeCompression(
-                        image: testImage,
-                        inputURL: inputURL,
-                        format: format,
-                        quality: quality,
-                        source: source,
-                        deleteOriginal: options.deleteOriginal
-                    )
-                }
-            }
-            
-            if isFinalTry { break }
-            
-            // 准备下一次迭代
-            currentScale -= 0.1
-            if currentScale < 0.1 { break } // 防止无限循环
+        // 如果是超高分辨率图片（如 > 4000px），增加早期缩放步骤以提高效率
+        if maxDimension > 4000 {
+            steps.insert(CompressionStep(scale: 0.95, quality: 0.82), at: 2)
         }
 
-        // 兜底策略：使用 1080p + 0.2 质量 (即使超过 5MB 也返回，作为 Best Effort)
-        print("⚠️ 无法满足 <5MB，使用兜底参数 (1080p, Q0.2)")
+        var lastScale: Double = -1
+        var lastResizedImage: CGImage?
+
+        for step in steps {
+            let resizeMode: ResizeMode = step.scale >= 0.99 ? .none : .longEdge(pixels: Int(Double(maxDimension) * step.scale))
+            
+            // 🧠 性能优化：缓存已缩放的图片，避免在同一 Scale 下重复缩放
+            let testImage: CGImage
+            if step.scale == lastScale, let cached = lastResizedImage {
+                testImage = cached
+            } else {
+                testImage = step.scale >= 0.99 ? cgImage : try resizeImage(source: source, cgImage: cgImage, resizeMode: resizeMode)
+                lastScale = step.scale
+                lastResizedImage = testImage
+            }
+            
+            let fileSize = try estimateFileSize(image: testImage, format: format, quality: step.quality, source: source)
+
+            let progressMsg = "🔍 自动策略: 分辨率×\(Int(step.scale*100))% (\(testImage.width)x\(testImage.height)), 质量\(Int(step.quality*100))% → \(String(format: "%.1f", Double(fileSize)/1_000_000))MB"
+            progressCallback?(progressMsg)
+            print(progressMsg)
+            
+            if fileSize <= targetSize && fileSize > 0 {
+                // 🔥 精化阶段 (Refine): 如果体积偏小 (例如 < 4MB)，尝试在当前比例下微调质量以靠近 5MB
+                if fileSize < 4_200_000 && step.quality < 0.95 {
+                    print("✨ 触发质量精修: 当前 \(Double(fileSize)/1_000_000)MB 较小，尝试调高画质...")
+                    let refinedQualities = [min(0.95, step.quality + 0.1), min(0.98, step.quality + 0.15)]
+                    for rQual in refinedQualities {
+                        let rSize = try estimateFileSize(image: testImage, format: format, quality: rQual, source: source)
+                        print("   ↳ 尝试质量 \(Int(rQual*100))% → \(String(format: "%.1f", Double(rSize)/1_000_000))MB")
+                        if rSize <= targetSize && rSize > fileSize {
+                            return try finalizeCompression(image: testImage, inputURL: inputURL, format: format, quality: rQual, source: source, deleteOriginal: options.deleteOriginal)
+                        }
+                    }
+                }
+
+                print("✅ 找到平衡点: 分辨率×\(Int(step.scale*100))%, 质量\(Int(step.quality*100))%")
+                return try finalizeCompression(
+                    image: testImage,
+                    inputURL: inputURL,
+                    format: format,
+                    quality: step.quality,
+                    source: source,
+                    deleteOriginal: options.deleteOriginal
+                )
+            }
+        }
+        // 兜底策略：使用 1080p + 0.3 质量
+        print("⚠️ 无法满足 <5MB，进入极限压缩模式")
+        let minLongEdge = 1080
         let minimalLongEdge = maxDimension > minLongEdge ? minLongEdge : maxDimension
-        let extremeImage = try resizeImage(
-            cgImage: cgImage, resizeMode: .longEdge(pixels: minimalLongEdge))
+        let extremeImage = try resizeImage(cgImage: cgImage, resizeMode: .longEdge(pixels: Int(minimalLongEdge)))
         return try finalizeCompression(
             image: extremeImage,
             inputURL: inputURL,
             format: format,
-            quality: 0.2,
+            quality: 0.3,
             source: source,
             deleteOriginal: options.deleteOriginal
         )
@@ -345,34 +367,32 @@ struct ImageCompressor {
         )
     }
 
-    /// 估算文件大小
+    /// 估算文件大小（在内存中进行，无磁盘 I/O 开销）
     nonisolated private static func estimateFileSize(
         image: CGImage,
         format: UTType,
         quality: Double,
         source: CGImageSource
     ) throws -> Int64 {
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "est_\(UUID().uuidString).\(format.preferredFilenameExtension ?? "tmp")")
-        defer { try? FileManager.default.removeItem(at: tempURL) }
-
-        guard
-            let destination = CGImageDestinationCreateWithURL(
-                tempURL as CFURL, format.identifier as CFString, 1, nil)
-        else {
-            throw NSError(
-                domain: "ImageCompressor", code: -30,
-                userInfo: [NSLocalizedDescriptionKey: "无法创建估算文件"])
+        // 使用 NSMutableData 将压缩过程完全限制在内存中
+        let data = NSMutableData()
+        
+        guard let destination = CGImageDestinationCreateWithData(
+            data as CFMutableData, format.identifier as CFString, 1, nil
+        ) else {
+            throw NSError(domain: "ImageCompressor", code: -30, userInfo: [NSLocalizedDescriptionKey: "无法创建内存压缩上下文"])
         }
 
-        var properties =
-            CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
+        var properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
         properties[kCGImageDestinationLossyCompressionQuality] = quality
 
         CGImageDestinationAddImage(destination, image, properties as CFDictionary)
-        CGImageDestinationFinalize(destination)
+        
+        guard CGImageDestinationFinalize(destination) else {
+            return 0
+        }
 
-        return getFileSize(url: tempURL) ?? 0
+        return Int64(data.length)
     }
 
     /// 完成压缩并输出文件
@@ -409,7 +429,9 @@ struct ImageCompressor {
         }
 
         if deleteOriginal {
-            try? FileManager.default.trashItem(at: inputURL, resultingItemURL: nil)
+            Task { @MainActor in
+                try? FileSafeHandler.safeTrashItem(at: inputURL)
+            }
         }
 
         return outputURL
@@ -417,8 +439,8 @@ struct ImageCompressor {
 
     // MARK: - 分辨率调整
 
-    /// 调整图片分辨率（支持超采样）
-    nonisolated private static func resizeImage(cgImage: CGImage, resizeMode: ResizeMode) throws -> CGImage {
+    /// 调整图片分辨率（支持 ImageIO 缩略图优化和超采样）
+    nonisolated private static func resizeImage(source: CGImageSource? = nil, cgImage: CGImage, resizeMode: ResizeMode) throws -> CGImage {
         let originalWidth = cgImage.width
         let originalHeight = cgImage.height
 
@@ -428,46 +450,37 @@ struct ImageCompressor {
             resizeMode: resizeMode
         )
 
-        // 如果尺寸没有变化，直接返回原图
-        if newWidth == originalWidth && newHeight == originalHeight {
-            return cgImage
+        // 🔥 内存优化：对于缩放操作，优先使用 ImageIO 的缩略图 API，这比创建 CGContext 省内存得多
+        // 尤其能解决 12000px 巨图导致的 IOSurface creation failed
+        if let source = source, newWidth < originalWidth {
+            let maxDimension = max(newWidth, newHeight)
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxDimension
+            ]
+            
+            if let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) {
+                print("🧊 使用 ImageIO Thumbnail API 完成缩放 (\(originalWidth) -> \(newWidth))")
+                return thumbnail
+            }
         }
 
-        print("📐 调整分辨率: \(originalWidth)x\(originalHeight) -> \(newWidth)x\(newHeight)")
-
-        // 🔥 超采样：如果是缩小操作，使用两步缩放获得更好的质量
+        // 🔥 超采样逻辑
+        let intermediateWidth = newWidth * 2
+        let intermediateHeight = newHeight * 2
+        let maxAllowedIntermediate = 4096
         let isDownscaling = newWidth < originalWidth || newHeight < originalHeight
+        let shouldUseSupersampling = isDownscaling && intermediateWidth <= maxAllowedIntermediate && intermediateHeight <= maxAllowedIntermediate
 
-        if isDownscaling {
-            // 超采样流程：原始 -> 2倍中间尺寸 -> 目标尺寸
-            let intermediateWidth = newWidth * 2
-            let intermediateHeight = newHeight * 2
-
-            print(
-                "🔬 使用超采样: \(originalWidth)x\(originalHeight) -> \(intermediateWidth)x\(intermediateHeight) -> \(newWidth)x\(newHeight)"
-            )
-
-            // 第一步：缩放到2倍中间尺寸
-            let intermediateImage = try createResizedImage(
-                from: cgImage,
-                width: intermediateWidth,
-                height: intermediateHeight
-            )
-
-            // 第二步：从中间尺寸缩放到目标尺寸
-            return try createResizedImage(
-                from: intermediateImage,
-                width: newWidth,
-                height: newHeight
-            )
+        if shouldUseSupersampling {
+            print("🔬 使用超采样回退流程: \(intermediateWidth)x\(intermediateHeight)")
+            let intermediateImage = try createResizedImage(from: cgImage, width: intermediateWidth, height: intermediateHeight)
+            return try createResizedImage(from: intermediateImage, width: newWidth, height: newHeight)
         } else {
-            // 放大操作：直接单次缩放
-            print("↗️ 单次放大缩放")
-            return try createResizedImage(
-                from: cgImage,
-                width: newWidth,
-                height: newHeight
-            )
+            print("📐 采用标准缩放流程 (\(newWidth)x\(newHeight))")
+            return try createResizedImage(from: cgImage, width: newWidth, height: newHeight)
         }
     }
 
@@ -608,7 +621,9 @@ struct ImageCompressor {
 
         // 删除源文件（如果需要）
         if deleteOriginal {
-            try? FileManager.default.trashItem(at: inputURL, resultingItemURL: nil)
+            Task { @MainActor in
+                try? FileSafeHandler.safeTrashItem(at: inputURL)
+            }
         }
 
         return outputURL

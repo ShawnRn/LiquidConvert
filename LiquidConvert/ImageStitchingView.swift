@@ -11,31 +11,6 @@ import UniformTypeIdentifiers
 import AppKit
 
 // MARK: - Caching
-class ThumbnailCache {
-    static let shared = ThumbnailCache()
-    private var cache: [String: NSImage] = [:] // Key: URL_Size
-    private let queue = DispatchQueue(label: "com.liquidconvert.thumbnailcache", attributes: .concurrent)
-    
-    private init() {}
-    
-    // 生成唯一键值：URL + 尺寸
-    private func key(for url: URL, size: CGFloat) -> String {
-        "\(url.path)_\(Int(size))"
-    }
-    
-    func image(for url: URL, size: CGFloat) -> NSImage? {
-        let k = key(for: url, size: size)
-        return queue.sync { cache[k] }
-    }
-    
-    func insert(_ image: NSImage, for url: URL, size: CGFloat) {
-        let k = key(for: url, size: size)
-        queue.async(flags: .barrier) {
-            if self.cache.count >= 500 { self.cache.removeAll() }
-            self.cache[k] = image
-        }
-    }
-}
 
 struct ImageStitchingView: View, Sendable {
     // Data
@@ -685,7 +660,14 @@ struct ImageStitchingView: View, Sendable {
 
     // MARK: - Selection Logic
     
+    @State private var lastMarqueeUpdateTime: Date = .distantPast
+    
     private func updateSelectionWithMarquee() {
+        // Throttle to ~20fps for complex O(N) calculations (50ms)
+        let now = Date()
+        if now.timeIntervalSince(lastMarqueeUpdateTime) < 0.05 { return }
+        lastMarqueeUpdateTime = now
+        
         // Calculate Frames logic
         // We simulate the Stack layout
         var currentOffset: CGFloat = 0
@@ -1129,13 +1111,11 @@ struct MinimapView: View {
                     ZStack(alignment: .topLeading) {
                         
                         // === 1. 内容层 (Mini Content) ===
-                        // 强制居中对齐，与主界面一致
-                        StitchingLayout(direction: direction, spacing: 16) {
-                            miniCards
-                        }
+                        // 隔离渲染：使用子视图承载，防止父级状态更新导致整个 Minimap 重绘
+                        MinimapCardsView(files: files, direction: direction)
                         .frame(width: realContentW, height: realContentH, alignment: .center)
-                        .scaleEffect(mapScale, anchor: .center) // 从中心缩放
-                        .frame(width: mapSize.width, height: mapSize.height, alignment: .center) // 居中于 Minimap
+                        .scaleEffect(mapScale, anchor: .center) 
+                        .frame(width: mapSize.width, height: mapSize.height, alignment: .center) 
                         
                         // === 2. 视口框 (The White Box) ===
                         RoundedRectangle(cornerRadius: 4)
@@ -1178,22 +1158,28 @@ struct MinimapView: View {
             }
         }
         
-        @ViewBuilder
-        var miniCards: some View {
+}
+
+// MARK: - 性能优化隔离视图：Minimap 内的卡片渲染
+struct MinimapCardsView: View {
+    let files: [URL]
+    let direction: StitchDirection
+    
+    var body: some View {
+        let layout = direction == .vertical 
+            ? AnyLayout(VStackLayout(spacing: 16))
+            : AnyLayout(HStackLayout(spacing: 16))
+            
+        layout {
             let limit = 20
             ForEach(files.prefix(limit), id: \.self) { url in
                 ZStack {
                     Color(nsColor: .controlBackgroundColor)
-                    // 🔥 Fix 2: Increase resolution to 300px for retina displays
                     AsyncThumbnailView(url: url, maxSize: 300)
                         .padding(4)
                 }
-                // 🔥 Fix 1: Unify layout logic with main view
-                // Always use fixed width 220, height is auto (aspect ratio)
-                // This ensures the minimap layout identical to the main canvas
                 .frame(width: 220)
                 .fixedSize(horizontal: false, vertical: true)
-                
                 .aspectRatio(contentMode: .fit)
                 .cornerRadius(12)
                 .shadow(color: .black.opacity(0.2), radius: 4)
@@ -1201,10 +1187,10 @@ struct MinimapView: View {
             if files.count > limit {
                 Rectangle()
                     .fill(Color.secondary.opacity(0.2))
-                    .frame(width: 220, height: 220) // Placeholder also fixed width? Or just square.
+                    .frame(width: 220, height: 220)
             }
         }
-    
+    }
 }
 
 // MARK: - Event Handling
@@ -1313,6 +1299,4 @@ struct ItemSizePreferenceKey: PreferenceKey {
         value.merge(nextValue()) { $1 }
     }
 }
-
-
 }
