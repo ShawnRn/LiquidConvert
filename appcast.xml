@@ -2,6 +2,14 @@
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <item>
+            <title>2.5</title>
+            <pubDate>Wed, 25 Feb 2026 09:23:13 +0800</pubDate>
+            <sparkle:version>2026022500</sparkle:version>
+            <sparkle:shortVersionString>2.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v2.5/LiquidConvert_2.5.dmg" type="application/octet-stream" sparkle:edSignature="3MWamgJyXXj2Hz8douD26dLvLIZaogoRBRf+j2w8Vv0txjGnIMbxIIUrSbyNj3h12kq5eBuhyw4AnpcD65QBDg==" length="4003437"/>
+        </item>
+        <item>
             <title>2.3</title>
             <pubDate>Thu, 12 Feb 2026 18:23:23 +0800</pubDate>
             <sparkle:version>2026021200</sparkle:version>
