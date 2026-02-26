@@ -25,8 +25,26 @@ struct VideoTrimView: View {
     @State private var thumbnails: [NSImage] = []
     @State private var isGeneratingThumbnails = false
     
+    // 🔥 视频宽高比 (width/height)，用于动态适配窗口
+    @State private var videoAspectRatio: CGFloat = 16.0 / 9.0
+    
     // Timer for updating current time
     @State private var timeObserver: Any?
+    
+    // 🔥 动态窗口尺寸
+    private let windowWidth: CGFloat = 800
+    private let headerHeight: CGFloat = 56  // Header 区域
+    private let timelineHeight: CGFloat = 140 // Timeline + Controls
+    
+    private var previewHeight: CGFloat {
+        // 根据视频比例计算预览区高度，限制合理范围
+        let rawHeight = windowWidth / videoAspectRatio
+        return min(max(rawHeight, 200), 600) // 最小 200，最大 600
+    }
+    
+    private var windowHeight: CGFloat {
+        headerHeight + previewHeight + timelineHeight
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -84,10 +102,11 @@ struct VideoTrimView: View {
 
             // MARK: - Preview Area
             ZStack {
-                Color.black.edgesIgnoringSafeArea(.all)
+                Color.black
                 
                 if let player = player {
                     CoreVideoPlayer(player: player)
+                        .aspectRatio(videoAspectRatio, contentMode: .fit)
                         .overlay(
                             Color.black.opacity(0.001) // Transparent overlay for gestures
                                 .onTapGesture { togglePlayback() }
@@ -114,8 +133,8 @@ struct VideoTrimView: View {
                         .foregroundColor(.white)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .layoutPriority(1)
+            .frame(maxWidth: .infinity, maxHeight: previewHeight)
+            .clipped()
 
             // MARK: - Timeline Area
             VStack(spacing: 0) {
@@ -181,7 +200,8 @@ struct VideoTrimView: View {
             }
             .background(Color(nsColor: .windowBackgroundColor))
         }
-        .frame(width: 800, height: 600)
+        .frame(width: windowWidth, height: windowHeight)
+        .animation(.easeInOut(duration: 0.3), value: videoAspectRatio)
         .preferredColorScheme(.dark)
         .onAppear {
             setupPlayer()
@@ -200,6 +220,22 @@ struct VideoTrimView: View {
             do {
                 let durationValue = try await asset.load(.duration)
                 self.duration = durationValue.seconds
+                
+                // 🔥 加载视频轨道的 naturalSize 以获取真实宽高比
+                if let videoTrack = try await asset.loadTracks(withMediaType: .video).first {
+                    let naturalSize = try await videoTrack.load(.naturalSize)
+                    let transform = try await videoTrack.load(.preferredTransform)
+                    
+                    // 应用 transform 获取实际显示尺寸（处理竖屏旋转）
+                    let transformedSize = naturalSize.applying(transform)
+                    let width = abs(transformedSize.width)
+                    let height = abs(transformedSize.height)
+                    
+                    if width > 0 && height > 0 {
+                        self.videoAspectRatio = width / height
+                        print("📐 视频实际尺寸: \(width)x\(height), 宽高比: \(String(format: "%.2f", width / height))")
+                    }
+                }
                 
                 // Initialize range from binding if valid, otherwise full duration
                 if trimRange.upperBound > trimRange.lowerBound && trimRange.upperBound <= duration {

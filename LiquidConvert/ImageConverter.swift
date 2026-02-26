@@ -233,9 +233,6 @@ struct ImageConverter {
                 let srcProperties =
                     CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
 
-                // 🔥 关键修改：处理输出路径
-                // 如果原文件就是 jpg/jpeg，直接替换原文件（不生成新文件）
-                // 如果原文件不是 jpg，转换为 .jpg 并删除源文件
                 let originalExtension = url.pathExtension.lowercased()
                 let isAlreadyJPG = (originalExtension == "jpg" || originalExtension == "jpeg")
 
@@ -246,10 +243,11 @@ struct ImageConverter {
                         "\(url.deletingPathExtension().lastPathComponent)_temp.jpg"
                     )
                 } else {
-                    // 原文件不是JPG，生成 .jpg 文件
+                    // 🔥 修复：使用 getUniqueFileURL 避免覆盖已有同名文件
                     let originalFolder = url.deletingLastPathComponent()
                     let baseFileName = url.deletingPathExtension().lastPathComponent
-                    outputURL = originalFolder.appendingPathComponent("\(baseFileName).jpg")
+                    outputURL = getUniqueFileURL(
+                        folder: originalFolder, fileName: baseFileName, extension: "jpg")
                 }
 
                 let fileSize = getFileSize(url: url) ?? 0
@@ -302,18 +300,34 @@ struct ImageConverter {
                         userInfo: [NSLocalizedDescriptionKey: "写入文件失败"])
                 }
 
-                // 🔥 关键处理：使用安全处理器处理删除和替换逻辑
+                // 🔥 转换已成功，先计数
+                successCount += 1
+
+                // 🔥 后续处理：删除/替换源文件（失败不影响成功计数）
                 if isAlreadyJPG {
                     // 原文件是JPG：删除原文件，临时文件重命名为原文件名
-                    try FileSafeHandler.safeTrashItem(at: url)
-                    try FileSafeHandler.safeMoveItem(at: outputURL, to: url)
-                    successCount += 1
-                    print("✅ 已替换原JPG: \(url.lastPathComponent) (自动压缩至 ≤5MB)")
+                    do {
+                        try FileSafeHandler.safeTrashItem(at: url)
+                        try FileSafeHandler.safeMoveItem(at: outputURL, to: url)
+                        print("✅ 已替换原JPG: \(url.lastPathComponent) (自动压缩至 ≤5MB)")
+                    } catch {
+                        print("⚠️ 替换原JPG失败，保留临时文件: \(error.localizedDescription)")
+                    }
                 } else {
                     // 原文件不是JPG：删除源文件，保留新生成的.jpg
-                    try FileSafeHandler.safeTrashItem(at: url)
-                    successCount += 1
-                    print("✅ 已转换并删除: \(url.lastPathComponent) -> \(outputURL.lastPathComponent)")
+                    do {
+                        try FileSafeHandler.safeTrashItem(at: url)
+                        print("✅ 已转换并删除: \(url.lastPathComponent) -> \(outputURL.lastPathComponent)")
+                    } catch {
+                        // 废纸篓失败，尝试直接删除
+                        print("⚠️ 废纸篓失败，尝试直接删除: \(error.localizedDescription)")
+                        do {
+                            try FileManager.default.removeItem(at: url)
+                            print("✅ 已直接删除源文件: \(url.lastPathComponent)")
+                        } catch {
+                            print("⚠️ 直接删除也失败: \(error.localizedDescription)")
+                        }
+                    }
                 }
             } catch {
                 failCount += 1
