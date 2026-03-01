@@ -62,6 +62,12 @@
 > **`appcast.xml` 必须是全流程中最后一个被 `push` 到远程仓库的文件。**
 
 1. **更新代码并推送 (不包含 `appcast.xml`)**：提交业务修改和版本号更新，推送到 GitHub。
-2. **创建 GitHub Release**：创建 tag 并上传 `LiquidConvert_x.x.x.dmg`。
-3. **运行发布脚本更新本地 `appcast.xml`**：运行 `./scripts/release.sh <version>`。
-4. **单独推送 `appcast.xml` (最后一步)**：推送该文件以激活 Sparkle 更新。
+2. **创建 GitHub Release**：使用 GitHub CLI (`gh`) 自动化创建 Release 并上传产物（请一并上传 `arm64` 和 `x86_64` 两个安装包）。例如：
+   ```bash
+   # 请将 $VERSION 替换为实际版本号，如 1.0.1
+   gh release create "v$VERSION" "releases/LiquidConvert_${VERSION}_arm64.dmg" "releases/LiquidConvert_${VERSION}_x86_64.dmg" \
+     --title "LiquidConvert $VERSION" \
+     --notes "在此输入更新日志"
+   ```
+3. **运行发布脚本更新本地 `appcast.xml`**：运行 `./scripts/release.sh <version>`。该脚本会自动为双架构生成 EdDSA 签名并组合到 `appcast.xml` 中。
+4. **单独推送 `appcast.xml` (最后一步)**：推送该文件以激活 Sparkle 双架构自适应更新。
