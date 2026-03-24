@@ -1,0 +1,70 @@
+# macOS
+.DS_Store
+.Trashes
+.AppleDouble
+.LSOverride
+Icon
+
+
+# Xcode
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.gunglare
+/LiquidConvert.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Build Manifest
+.build/
+
+# Swift Package Manager
+.swiftpm/
+Packages/
+
+# CocoaPods
+Pods/
+
+# Bundle artifacts
+*.dSYM.zip
+*.dSYM/
+*.app/
+*.pkg
+releases/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+.env
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Agent
+.agent/skills/
+
+# Excluded by User
+AppIconSet/
+
+# Junk / Legacy / Migration
+Lark2Pad/
+DEBUG_DOCK.md
+package.json
+package-lock.json
+
+# Scripts should NOT be ignored
+# scripts/

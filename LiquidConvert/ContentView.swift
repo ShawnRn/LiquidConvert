@@ -59,6 +59,7 @@ struct ContentView: View {
                         SidebarItem(icon: "square.fill.text.grid.1x2", title: "图片拼接", id: .stitch, selected: navigationBinding, namespace: animation)
                         SidebarItem(icon: "film", title: "视频 GIF", id: .videogif, selected: navigationBinding, namespace: animation)
                         SidebarItem(icon: "app.gift", title: "图标转换", id: .icns, selected: navigationBinding, namespace: animation)
+                        SidebarItem(icon: "doc.richtext.fill", title: "飞书转换", id: .lark2pad, selected: navigationBinding, namespace: animation)
                     }
                 }
                 
@@ -111,6 +112,8 @@ struct ContentView: View {
                             VideoGifFunctionView()
                         case .icns:
                             IconFunctionView()
+                        case .lark2pad:
+                            Lark2PadFunctionView()
                         case .settings:
                             SettingsView()
                         }
@@ -271,6 +274,7 @@ struct HomeView: View {
                     QuickActionButton(icon: "square.fill.text.grid.1x2", label: "拼接", action: { selectedTab = .stitch })
                     QuickActionButton(icon: "film", label: "视频", action: { selectedTab = .videogif })
                     QuickActionButton(icon: "app.gift", label: "图标", action: { selectedTab = .icns })
+                    QuickActionButton(icon: "doc.richtext.fill", label: "飞书", action: { selectedTab = .lark2pad })
                 }
             }
             
