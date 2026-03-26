@@ -2,6 +2,15 @@
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <item>
+            <title>3.1.0</title>
+            <pubDate>Thu, 26 Mar 2026 14:11:23 +0800</pubDate>
+            <sparkle:version>2026032600</sparkle:version>
+            <sparkle:shortVersionString>3.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.1.0/LiquidConvert_3.1.0_arm64.dmg" length="5152898" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="arm64" sparkle:edSignature="1kJc2ocVKGeI7dJAhKGitsQyBBrkB93IUb6UXLgZ0cR+3gs02mdsUv6yiZB9EB65ApgGy9m+Zctg/A7/K0D6Ag=="/>
+            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.1.0/LiquidConvert_3.1.0_x86_64.dmg" length="5201914" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="x86_64" sparkle:edSignature="uW6U95xS9zxPjyi8XeYLORBo+0EzKlXFtVKrloHlM7/AmAShWS1AE4GMDU1bF+1ZcmzqPkMMegVkFDiLlVtZCQ=="/>
+        </item>
+        <item>
             <title>3.0</title>
             <pubDate>Tue, 24 Mar 2026 22:07:54 +0800</pubDate>
             <sparkle:version>2026032400</sparkle:version>
