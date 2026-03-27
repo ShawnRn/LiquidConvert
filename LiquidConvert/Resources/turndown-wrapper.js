@@ -38,6 +38,27 @@ function initTurndown() {
             return '<img src="' + src + '" name="' + name + '">';
         }
     });
+
+    // 针对列表项的定制规则，强制紧凑列表（移除多余空行）
+    turndownService.addRule('listItems', {
+        filter: 'li',
+        replacement: function (content, node, options) {
+            content = content
+                .replace(/^\n+/, '') // 移除开头的换行
+                .replace(/\n+$/, '\n') // 确保结尾只有一个换行
+                .replace(/\n/gm, '\n    '); // 处理内部换行的缩进
+            var prefix = options.bulletListMarker + ' ';
+            var parent = node.parentNode;
+            if (parent && parent.nodeName === 'OL') {
+                var start = parent.getAttribute('start');
+                var index = Array.prototype.indexOf.call(parent.children, node);
+                prefix = (start ? Number(start) + index : index + 1) + '. ';
+            }
+            return (
+                prefix + content + (node.nextSibling && !/\n$/.test(content) ? '' : '')
+            );
+        }
+    });
 }
 
 // 接收 HTML、清理并返回需下载的图片列表
@@ -89,6 +110,13 @@ function replaceImageAndConvertToMarkdown(replacementsJson) {
     let markdown = window.turndownService.turndown(window.activeDoc.body);
     
     // 后置清理额外换行
+    markdown = markdown.replace(/\n{3,}/g, '\n\n').trim();
+    return markdown;
+}
+
+// 直接将加载的 HTML 转为 Markdown，保留原始图片 URL（不替换为 Base64）
+function convertToMarkdownDirectly() {
+    let markdown = window.turndownService.turndown(window.activeDoc.body);
     markdown = markdown.replace(/\n{3,}/g, '\n\n').trim();
     return markdown;
 }
