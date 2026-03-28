@@ -61,7 +61,6 @@ yarn-error.log
 AppIconSet/
 
 # Junk / Legacy / Migration
-Lark2Pad/
 DEBUG_DOCK.md
 package.json
 package-lock.json
