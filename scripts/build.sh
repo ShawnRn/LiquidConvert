@@ -121,10 +121,8 @@ for TARGET_ARCH in "${TARGET_ARCHS[@]}"; do
         mkdir -p "$TEMP_APP_DIR"
         cp -R "${ARCH_APP_BUNDLE}" "${TEMP_APP_DIR}/${APP_NAME}"
         
-        # Run create-dmg in the DMG_DIR
-        cd "$DMG_DIR"
+        # Try create-dmg first
         create-dmg "${TEMP_APP_DIR}/${APP_NAME}" "$DMG_DIR" || true
-        cd "$ROOT"
         
         # Handle the generated DMG name ("App Version.dmg" or similar)
         if [[ -f "$DMG_DIR/${PROJECT_NAME} ${MARKETING_VERSION}.dmg" ]]; then
@@ -139,10 +137,20 @@ for TARGET_ARCH in "${TARGET_ARCHS[@]}"; do
         # Cleanup temp app dir
         rm -rf "$TEMP_APP_DIR"
         
+        if [[ ! -f "$DMG_FINAL_PATH" ]]; then
+            echo "==> create-dmg 未生成预期产物，回退到 hdiutil for ${TARGET_ARCH}..."
+            hdiutil create \
+                -volname "${PROJECT_NAME}" \
+                -srcfolder "${TEMP_APP_DIR}" \
+                -ov \
+                -format UDZO \
+                "$DMG_FINAL_PATH"
+        fi
+
         if [[ -f "$DMG_FINAL_PATH" ]]; then
             echo "==> Successfully created $DMG_FINAL_PATH"
         else
-            echo "==> Warning: DMG creation might have failed or naming is unexpected for ${TARGET_ARCH}."
+            echo "==> Warning: DMG creation failed for ${TARGET_ARCH}."
         fi
     else
         echo "==> Warning: create-dmg not found. Skipping DMG creation."
