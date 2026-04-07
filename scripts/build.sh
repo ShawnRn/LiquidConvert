@@ -141,7 +141,7 @@ for TARGET_ARCH in "${TARGET_ARCHS[@]}"; do
             echo "==> create-dmg 未生成预期产物，回退到 hdiutil for ${TARGET_ARCH}..."
             hdiutil create \
                 -volname "${PROJECT_NAME}" \
-                -srcfolder "${TEMP_APP_DIR}" \
+                -srcfolder "${ARCH_APP_BUNDLE}" \
                 -ov \
                 -format UDZO \
                 "$DMG_FINAL_PATH"
