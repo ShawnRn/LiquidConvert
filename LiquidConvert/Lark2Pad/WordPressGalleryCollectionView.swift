@@ -278,6 +278,7 @@ struct WordPressGalleryCollectionView: NSViewRepresentable {
             return 0
         }
 
+        @MainActor
         private func presentQuickLook(autoUpdate: Bool = false) async {
             guard let focusedIndex = focusedItemIndex(),
                   focusedIndex < parent.items.count else { return }
@@ -298,17 +299,15 @@ struct WordPressGalleryCollectionView: NSViewRepresentable {
                 guard let panel = QLPreviewPanel.shared() else { return }
                 panel.dataSource = self
                 panel.delegate = self
-                panel.updateController()
-                panel.currentPreviewItemIndex = 0
 
                 if autoUpdate {
                     panel.reloadData()
-                    panel.updateController()
-                    panel.currentPreviewItemIndex = 0
+                    panel.refreshCurrentPreviewItem()
                 } else {
                     installQuickLookKeyMonitor()
                     panel.makeKeyAndOrderFront(nil)
                     panel.updateController()
+                    panel.reloadData()
                 }
             } catch {
                 NSSound.beep()
@@ -436,7 +435,6 @@ struct WordPressGalleryCollectionView: NSViewRepresentable {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 await self.presentQuickLook(autoUpdate: true)
-                panel.currentPreviewItemIndex = 0
                 panel.refreshCurrentPreviewItem()
             }
         }
