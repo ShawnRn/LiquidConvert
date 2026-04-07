@@ -106,8 +106,8 @@ for TARGET_ARCH in "${TARGET_ARCHS[@]}"; do
     # 4. Create DMG
     if [[ "${SKIP_DMG}" == "1" ]]; then
         echo "==> Skipping DMG creation for ${TARGET_ARCH} (SKIP_DMG=1)"
-    elif command -v create-dmg &> /dev/null; then
-        echo "==> Creating DMG with create-dmg for ${TARGET_ARCH}..."
+    else
+        echo "==> Creating DMG with hdiutil for ${TARGET_ARCH}..."
         DMG_DIR="$ROOT/releases"
         mkdir -p "$DMG_DIR"
         
@@ -115,44 +115,18 @@ for TARGET_ARCH in "${TARGET_ARCHS[@]}"; do
         DMG_FINAL_NAME="${PROJECT_NAME}_${MARKETING_VERSION}_${TARGET_ARCH}.dmg"
         DMG_FINAL_PATH="$DMG_DIR/$DMG_FINAL_NAME"
         rm -f "$DMG_FINAL_PATH"
-        
-        # Temp app name inside DMG
-        TEMP_APP_DIR="$ROOT/.build/tmp_${TARGET_ARCH}"
-        mkdir -p "$TEMP_APP_DIR"
-        cp -R "${ARCH_APP_BUNDLE}" "${TEMP_APP_DIR}/${APP_NAME}"
-        
-        # Try create-dmg first
-        create-dmg "${TEMP_APP_DIR}/${APP_NAME}" "$DMG_DIR" || true
-        
-        # Handle the generated DMG name ("App Version.dmg" or similar)
-        if [[ -f "$DMG_DIR/${PROJECT_NAME} ${MARKETING_VERSION}.dmg" ]]; then
-            mv "$DMG_DIR/${PROJECT_NAME} ${MARKETING_VERSION}.dmg" "$DMG_FINAL_PATH"
-        elif [[ -f "$DMG_DIR/${PROJECT_NAME}.dmg" ]]; then
-            mv "$DMG_DIR/${PROJECT_NAME}.dmg" "$DMG_FINAL_PATH"
-        else
-            # Fallback wildcard move if needed
-            mv "$DMG_DIR"/${PROJECT_NAME}*.dmg "$DMG_FINAL_PATH" 2>/dev/null || true
-        fi
-        
-        # Cleanup temp app dir
-        rm -rf "$TEMP_APP_DIR"
-        
-        if [[ ! -f "$DMG_FINAL_PATH" ]]; then
-            echo "==> create-dmg 未生成预期产物，回退到 hdiutil for ${TARGET_ARCH}..."
-            hdiutil create \
-                -volname "${PROJECT_NAME}" \
-                -srcfolder "${ARCH_APP_BUNDLE}" \
-                -ov \
-                -format UDZO \
-                "$DMG_FINAL_PATH"
-        fi
+
+        hdiutil create \
+            -volname "${PROJECT_NAME}" \
+            -srcfolder "${ARCH_APP_BUNDLE}" \
+            -ov \
+            -format UDZO \
+            "$DMG_FINAL_PATH"
 
         if [[ -f "$DMG_FINAL_PATH" ]]; then
             echo "==> Successfully created $DMG_FINAL_PATH"
         else
             echo "==> Warning: DMG creation failed for ${TARGET_ARCH}."
         fi
-    else
-        echo "==> Warning: create-dmg not found. Skipping DMG creation."
     fi
 done
