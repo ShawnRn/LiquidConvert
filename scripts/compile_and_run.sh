@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# LiquidConvert Compile, Package, and Run Script
+# LiquidConvert Compile and Run Script
 # Inspired by MotrixMac with structured logging and safety checks.
 
 set -euo pipefail
@@ -13,6 +13,7 @@ APP_BUNDLE="${ROOT_DIR}/${APP_NAME}_${ARCH}.app"
 if [ ! -d "${APP_BUNDLE}" ]; then
   APP_BUNDLE="${ROOT_DIR}/${APP_NAME}.app"
 fi
+APP_EXECUTABLE="${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 APP_PROCESS_PATTERN="${APP_NAME}.app/Contents/MacOS/${APP_NAME}"
 
 # Structured logging
@@ -48,22 +49,24 @@ kill_all_instances() {
 
 # --- Execution ---
 
-# 1) Build
-run_step "Building ${APP_NAME} (debug)" "${ROOT_DIR}/scripts/build.sh" debug
+# 1) Build only the current architecture app bundle and skip DMG packaging for dev loops
+run_step "Building ${APP_NAME} (debug)" env BUILD_ARCHS="${ARCH}" SKIP_DMG=1 "${ROOT_DIR}/scripts/build.sh" debug
 
 # 2) Cleanup
 kill_all_instances
 
 # 3) Launch
 log "==> Launching app"
-"${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" &
-APP_PID=$!
-log "Launched ${APP_NAME} (PID: ${APP_PID})"
+open -na "${APP_BUNDLE}"
+sleep 1
+osascript -e "tell application \"${APP_BUNDLE}\" to activate" >/dev/null 2>&1 || true
 
 # 4) Verify
 log "==> Verifying application state"
 for _ in {1..10}; do
-  if ps -p ${APP_PID} > /dev/null; then
+  APP_PID=$(pgrep -n -f "${APP_EXECUTABLE}" || true)
+  if [ -n "${APP_PID}" ] && ps -p "${APP_PID}" > /dev/null; then
+    log "Launched ${APP_NAME} (PID: ${APP_PID})"
     log "OK: ${APP_NAME} is running"
     log "==> All development loop steps completed successfully."
     exit 0

@@ -1,0 +1,140 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "可选：覆盖项目内版本号"
+        required: false
+        type: string
+      update_appcast:
+        description: "若已配置 Sparkle 私钥，则一并更新 appcast.xml"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+      HAS_SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SETTINGS=$(xcodebuild -showBuildSettings -project "LiquidConvert.xcodeproj" -scheme "LiquidConvert" -configuration Release 2>/dev/null)
+          PROJECT_VERSION=$(echo "$SETTINGS" | awk '/ MARKETING_VERSION = / {print $3; exit}')
+          PROJECT_BUILD=$(echo "$SETTINGS" | awk '/ CURRENT_PROJECT_VERSION = / {print $3; exit}')
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="$PROJECT_VERSION"
+          fi
+
+          if [[ "$VERSION" != "$PROJECT_VERSION" ]]; then
+            echo "Tag / workflow version ($VERSION) does not match project MARKETING_VERSION ($PROJECT_VERSION)"
+            exit 1
+          fi
+
+          TAG="v${VERSION}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "build=$PROJECT_BUILD" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Install create-dmg
+        shell: bash
+        run: brew install create-dmg
+
+      - name: Build dual-arch release artifacts
+        shell: bash
+        run: ./scripts/build.sh release
+
+      - name: Verify generated DMGs
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          test -f "releases/LiquidConvert_${VERSION}_arm64.dmg"
+          test -f "releases/LiquidConvert_${VERSION}_x86_64.dmg"
+
+      - name: Create GitHub Release if missing
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "LiquidConvert ${VERSION}" \
+              --notes "Automated release for LiquidConvert ${VERSION}."
+          fi
+
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+
+          gh release upload "$TAG" \
+            "releases/LiquidConvert_${VERSION}_arm64.dmg" \
+            "releases/LiquidConvert_${VERSION}_x86_64.dmg" \
+            --clobber
+
+      - name: Update appcast.xml
+        if: ${{ env.HAS_SPARKLE_PRIVATE_KEY == 'true' && (github.event_name == 'push' || inputs.update_appcast) }}
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        shell: bash
+        run: ./scripts/release.sh "${{ steps.version.outputs.version }}"
+
+      - name: Validate appcast.xml
+        if: ${{ env.HAS_SPARKLE_PRIVATE_KEY == 'true' && (github.event_name == 'push' || inputs.update_appcast) }}
+        shell: bash
+        run: xmllint --noout appcast.xml
+
+      - name: Commit appcast.xml
+        if: ${{ env.HAS_SPARKLE_PRIVATE_KEY == 'true' && (github.event_name == 'push' || inputs.update_appcast) }}
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- appcast.xml; then
+            echo "appcast.xml unchanged"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git commit -m "Update appcast for ${{ steps.version.outputs.tag }}"
+          git push origin "HEAD:${DEFAULT_BRANCH}"

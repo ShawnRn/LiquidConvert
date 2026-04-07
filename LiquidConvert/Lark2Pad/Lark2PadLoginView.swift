@@ -6,7 +6,7 @@ struct Lark2PadLoginView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var coordinator: ConversionCoordinator
     @State private var errorMessage: String?
-    private let url = URL(string: "https://pad.corp.ifanr.com/")!
+    private let url = URL(string: SecureRuntimeConfig.etherpadRootURL)!
     
     var body: some View {
         VStack(spacing: 0) {

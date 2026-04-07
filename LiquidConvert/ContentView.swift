@@ -60,6 +60,7 @@ struct ContentView: View {
                         SidebarItem(icon: "film", title: "视频 GIF", id: .videogif, selected: navigationBinding, namespace: animation)
                         SidebarItem(icon: "app.gift", title: "图标转换", id: .icns, selected: navigationBinding, namespace: animation)
                         SidebarItem(icon: "doc.richtext.fill", title: "飞书转换", id: .lark2pad, selected: navigationBinding, namespace: animation)
+                        SidebarItem(icon: "photo.stack.fill", title: "图库", id: .gallery, selected: navigationBinding, namespace: animation)
                     }
                 }
                 
@@ -114,6 +115,8 @@ struct ContentView: View {
                             IconFunctionView()
                         case .lark2pad:
                             Lark2PadFunctionView()
+                        case .gallery:
+                            ImageGalleryView()
                         case .settings:
                             SettingsView()
                         }
@@ -275,6 +278,7 @@ struct HomeView: View {
                     QuickActionButton(icon: "film", label: "视频", action: { selectedTab = .videogif })
                     QuickActionButton(icon: "app.gift", label: "图标", action: { selectedTab = .icns })
                     QuickActionButton(icon: "doc.richtext.fill", label: "飞书", action: { selectedTab = .lark2pad })
+                    QuickActionButton(icon: "photo.stack.fill", label: "图库", action: { selectedTab = .gallery })
                 }
             }
             

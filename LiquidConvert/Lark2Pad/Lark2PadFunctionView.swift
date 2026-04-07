@@ -191,20 +191,73 @@ struct Lark2PadFunctionView: View {
     // MARK: - Processing
 
     private func processingView(status: String) -> some View {
-        VStack(spacing: 24) {
-            ProgressView()
-                .controlSize(.large)
-
-            Text(status)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .id(status)
-                .transition(.identity)
+        VStack(spacing: 16) {
+            statusLabel(status)
+            loadingSection
         }
-        .animation(.none, value: status)
+        .animation(.easeInOut(duration: 0.3), value: coordinator.phase)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private func statusLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 14, weight: .regular))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .id(text)
+    }
+
+    @ViewBuilder
+    private var loadingSection: some View {
+        VStack(spacing: 8) {
+            switch coordinator.phase {
+            case .rendering:
+                indeterminateBar
+            case .processing where coordinator.uploadProgress > 0:
+                determinateBar
+            default:
+                initialSpinner
+            }
+        }
+        .frame(height: 32, alignment: .top)
+    }
+
+    private var indeterminateBar: some View {
+        ProgressView()
+            .progressViewStyle(.linear)
+            .tint(.blue)
+            .frame(width: 240)
+            .transition(.opacity)
+    }
+
+    private var determinateBar: some View {
+        VStack(spacing: 8) {
+            ProgressView(value: coordinator.uploadProgress)
+                .progressViewStyle(.linear)
+                .tint(.blue)
+                .frame(width: 240)
+                .animation(.spring(response: 0.5), value: coordinator.uploadProgress)
+            
+            HStack {
+                Text("\(Int(coordinator.uploadProgress * 100))%")
+                Spacer()
+                if !coordinator.speedMessage.isEmpty {
+                    Text(coordinator.speedMessage)
+                }
+            }
+            .font(.system(size: 10, weight: .medium))
+            .monospacedDigit()
+            .foregroundStyle(.tertiary)
+            .frame(width: 240)
+        }
+    }
+
+    private var initialSpinner: some View {
+        ProgressView()
+            .controlSize(.regular)
+            .transition(.opacity)
+            .padding(.top, 4)
     }
 
     // MARK: - Result

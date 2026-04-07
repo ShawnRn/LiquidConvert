@@ -47,6 +47,16 @@ node_modules/
 npm-debug.log
 yarn-error.log
 .env
+.env.local
+.env.release
+*.pem
+*.p12
+*.p8
+*.mobileprovision
+LocalSecrets.plist
+Secrets.plist
+secrets/
+*.secret
 
 # Editor/IDE
 .vscode/
@@ -64,6 +74,8 @@ AppIconSet/
 DEBUG_DOCK.md
 package.json
 package-lock.json
+Lark2Pad_20260327.html
+参考文件/
 
 # Scripts should NOT be ignored
 # scripts/

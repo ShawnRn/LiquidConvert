@@ -4,29 +4,39 @@ import Foundation
 @MainActor
 final class ImageUploader {
     
-    // MARK: - 配置信息 (请在此根据 ifanr 图床 API 进行调整)
+    // MARK: - 配置信息
     
-    /// 图床 API 端点 (占位符)
-    private static let uploadEndpoint = "https://api.ifanr.com/v1/file/upload/"
+    /// 共享的 URLSession，开启连接复用 (Keep-Alive)
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.httpMaximumConnectionsPerHost = 1
+        config.timeoutIntervalForRequest = 180 // 针对大图进一步放宽请求超时
+        config.timeoutIntervalForResource = 300
+        return URLSession(configuration: config)
+    }()
     
-    /// 认证 Token (占位符)
-    private static let apiToken = "YOUR_COMPANY_TOKEN_HERE"
-    
-    /// 批量处理图片：下载飞书临时图片并上传至私有图床
-    static func uploadAll(images: [(id: Int, url: String)]) async -> [(id: Int, base64: String)] {
+    /// 批量处理图片：下载飞书临时图片并上传至私有图床输出进度
+    /// 回调参数：(当前索引, 当前文件进度0-1, 实时速度字符串)
+    static func uploadAll(images: [(id: Int, url: String)], 
+                        progress: ((Int, Double, String) -> Void)? = nil) async throws -> [(id: Int, base64: String)] {
         if images.isEmpty { return [] }
         
-        print("[ImageUploader] 开始串行处理 \(images.count) 张图片，以确保稳定性...")
+        print("[ImageUploader] 开始串行处理 \(images.count) 张图片，并启用实时进度监控...")
         var results: [(id: Int, base64: String)] = []
         
-        // 彻底改为串行，避免任何并发带来的网络压力或代理冲突
-        for item in images {
-            print("[ImageUploader] 正在处理图片: \(item.id)")
-            if let newURL = await uploadSingleImage(url: item.url) {
+        for (index, item) in images.enumerated() {
+            // 初始化当前图片的进度
+            progress?(index + 1, 0.0, "准备中...")
+            
+            print("[ImageUploader] 正在处理第 \(index + 1)/\(images.count) 张图片: \(item.id)")
+            
+            if let newURL = try await uploadSingleImage(url: item.url, onProgress: { fileProgress, speed in
+                progress?(index + 1, fileProgress, speed)
+            }) {
                 results.append((id: item.id, base64: newURL))
             }
-            // 每张图之间给一点缓冲
-            try? await Task.sleep(for: .milliseconds(500))
+            
+            try? await Task.sleep(for: .milliseconds(300))
         }
         
         print("[ImageUploader] 最终成功上传 \(results.count) / \(images.count) 张图片")
@@ -35,60 +45,50 @@ final class ImageUploader {
     
     // MARK: - 私有方法
     
-    private static func uploadSingleImage(url: String) async -> String? {
+    private static func uploadSingleImage(url: String, onProgress: @escaping (Double, String) -> Void) async throws -> String? {
         guard let imageURL = URL(string: url) else { return nil }
         
         do {
             // 1. 下载图片数据
-            let (data, response) = try await URLSession.shared.data(from: imageURL)
+            let (data, response) = try await session.data(from: imageURL)
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard statusCode == 200 else { return nil }
+            guard statusCode == 200 else { 
+                print("[ImageUploader] ❌ 下载失败: \(url), 状态码: \(statusCode)")
+                return nil 
+            }
             
-            // 获取真实 MIME 类型
             let mimeType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? "image/png"
             let ext = mimeType.contains("jpeg") ? "jpg" : (mimeType.contains("gif") ? "gif" : (mimeType.contains("webp") ? "webp" : "png"))
             let finalFilename = "l2p_\(UUID().uuidString.prefix(8)).\(ext)"
             
-            // 2. 执行上传
-            return try await performUpload(data: data, filename: finalFilename, mimeType: mimeType)
+            print("[ImageUploader] 已下载数据 (\(data.count / 1024) KB), 准备上传...")
+            
+            // 2. 执行上传 (传入进度回调)
+            return try await performUpload(data: data, filename: finalFilename, mimeType: mimeType, onProgress: onProgress)
         } catch {
-            print("[ImageUploader] ❌ 下载失败: \(url), 错误: \(error.localizedDescription)")
-            return nil
+            print("[ImageUploader] ❌ 图片下载/处理阶段失败: \(url), 错误: \(error.localizedDescription)")
+            throw error
         }
     }
     
     /// 执行具体的 API 上传行为
-    private static func performUpload(data: Data, filename: String, mimeType: String, retryCount: Int = 0) async throws -> String? {
+    private static func performUpload(data: Data, 
+                                     filename: String, 
+                                     mimeType: String, 
+                                     retryCount: Int = 0,
+                                     onProgress: @escaping (Double, String) -> Void) async throws -> String? {
         let maxRetries = 2
-        
-        // 关键安全原则：所有 ifanr 相关的凭据必须保存在本地，
-        // 我们通过 CookieManager 从 WebView 提取并存储在 UserDefaults 中，
-        // 禁止在此处硬编码任何真实 Token 或将其上传至代码仓库。
         let cookies = CookieManager.shared.cookieHeaderValue
-        
-        // 使用明确存在的路径，或者随机的一个符合规范的 padId
-        let padId = "lark2pad_upload"
-        let endpoint = "https://pad.corp.ifanr.com/p/\(padId)/pluginfw/ep_image_upload/upload"
+        let padId = SecureRuntimeConfig.padIdentifier
+        let endpoint = SecureRuntimeConfig.uploadEndpoint(for: padId)
         guard let url = URL(string: endpoint) else { return nil }
-        
-        // 使用专用配置，限制并发并延长超时
-        let config = URLSessionConfiguration.default
-        config.httpMaximumConnectionsPerHost = 1
-        config.timeoutIntervalForRequest = 60
-        config.timeoutIntervalForResource = 120
-        let session = URLSession(configuration: config)
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        
-        // 彻底模拟浏览器头部
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
-        request.setValue("https://pad.corp.ifanr.com", forHTTPHeaderField: "Origin")
-        request.setValue("https://pad.corp.ifanr.com/p/\(padId)", forHTTPHeaderField: "Referer")
+        request.setValue(SecureRuntimeConfig.etherpadBaseURL, forHTTPHeaderField: "Origin")
+        request.setValue("\(SecureRuntimeConfig.etherpadBaseURL)/p/\(padId)", forHTTPHeaderField: "Referer")
         request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
-        request.setValue("application/json, text/javascript, */*; q=0.01", forHTTPHeaderField: "Accept")
-        request.setValue("zh-CN,zh;q=0.9,en;q=0.8", forHTTPHeaderField: "Accept-Language")
-        request.setValue("keep-alive", forHTTPHeaderField: "Connection")
         
         if !cookies.isEmpty {
             request.setValue(cookies, forHTTPHeaderField: "Cookie")
@@ -97,31 +97,40 @@ final class ImageUploader {
         let boundary = "----WebKitFormBoundary\(UUID().uuidString.prefix(16).lowercased())"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         
-        // 精确构建 Multipart 报文 (严格遵循浏览器行为)
         var body = Data()
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
         body.append(data)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!) // 部分服务器要求结尾也有 CRLF
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         
-        request.httpBody = body
-        request.setValue("\(body.count)", forHTTPHeaderField: "Content-Length")
+        // 使用 Delegate 追踪进度
+        let delegate = UploadProgressDelegate()
+        delegate.onProgress = { sent, total in
+            guard total > 0 else { return }
+            let fraction = Double(sent) / Double(total)
+            let speed = delegate.calculateSpeed(sent: sent)
+            onProgress(fraction, speed)
+        }
         
         do {
-            let (responseData, response) = try await session.data(for: request)
+            let (responseData, response) = try await session.upload(for: request, from: body, delegate: delegate)
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             let responseString = String(data: responseData, encoding: .utf8) ?? "空响应"
             
             if statusCode == 200 || statusCode == 201 {
-                // 1. 尝试解析为 JSON 字典 (如果有 {"url": "..."})
                 if let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
                    let resultUrl = json["url"] as? String {
                     print("[ImageUploader] ✅ 上传成功 (JSON): \(resultUrl)")
+                    ImageGalleryStore.shared.recordUpload(
+                        url: resultUrl,
+                        filename: filename,
+                        mimeType: mimeType,
+                        byteCount: data.count
+                    )
                     return resultUrl
                 }
                 
-                // 2. 尝试解析为带引号的纯字符串 (如 "https://...")
                 var finalUrl = responseString.trimmingCharacters(in: .whitespacesAndNewlines)
                 if finalUrl.hasPrefix("\"") && finalUrl.hasSuffix("\"") {
                     finalUrl = String(finalUrl.dropFirst().dropLast())
@@ -129,21 +138,55 @@ final class ImageUploader {
                 
                 if finalUrl.hasPrefix("http") {
                     print("[ImageUploader] ✅ 上传成功 (String): \(finalUrl)")
+                    ImageGalleryStore.shared.recordUpload(
+                        url: finalUrl,
+                        filename: filename,
+                        mimeType: mimeType,
+                        byteCount: data.count
+                    )
                     return finalUrl
                 }
-                
-                print("[ImageUploader] ⚠️ 响应结构不支持: \(responseString)")
+                return nil
             } else {
                 print("[ImageUploader] ❌ 服务器拒绝 (\(statusCode)): \(responseString)")
+                return nil
             }
         } catch {
-            print("[ImageUploader] ⚠️ 网络错误 (重试 \(retryCount)/\(maxRetries)): \(error.localizedDescription)")
+            print("[ImageUploader] ⚠️ 上传阶段网络错误 (重试 \(retryCount)/\(maxRetries)): \(error.localizedDescription)")
             if retryCount < maxRetries {
-                try? await Task.sleep(for: .seconds(3))
-                return try await performUpload(data: data, filename: filename, mimeType: mimeType, retryCount: retryCount + 1)
+                try? await Task.sleep(for: .seconds(Double(retryCount + 1) * 2.0))
+                return try await performUpload(data: data, filename: filename, mimeType: mimeType, retryCount: retryCount + 1, onProgress: onProgress)
+            } else {
+                throw error
             }
         }
+    }
+}
+
+/// 内部 Delegate 用于捕获上传进度
+private class UploadProgressDelegate: NSObject, URLSessionTaskDelegate {
+    var onProgress: ((Int64, Int64) -> Void)?
+    private let startTime = Date()
+    
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+        onProgress?(totalBytesSent, totalBytesExpectedToSend)
+    }
+    
+    /// 计算并格式化当前网速
+    func calculateSpeed(sent: Int64) -> String {
+        let elapsed = Date().timeIntervalSince(startTime)
+        guard elapsed > 0 else { return "0 B/s" }
         
-        return nil
+        let bytesPerSec = Double(sent) / elapsed
+        
+        if bytesPerSec >= 1024 * 1024 {
+            return String(format: "%.1f MB/s", bytesPerSec / (1024 * 1024))
+        }
+        
+        if bytesPerSec >= 1024 {
+            return String(format: "%.1f KB/s", bytesPerSec / 1024)
+        }
+        
+        return "\(Int(bytesPerSec)) B/s"
     }
 }

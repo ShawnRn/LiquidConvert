@@ -28,6 +28,10 @@ final class ConversionCoordinator: ObservableObject {
     @Published var etherpadHTML: String = "" // Raw version for export
     @Published var previewHTML: String = ""   // Rendered version for preview
     @Published var isLoggedIntoEtherpad: Bool = false
+    
+    // 进度跟踪
+    @Published var uploadProgress: Double = 0 // 0.0 - 1.0 整体进度
+    @Published var speedMessage: String = ""  // 实时网速文本
 
     // MARK: - Engine
     
@@ -77,8 +81,24 @@ final class ConversionCoordinator: ObservableObject {
             // Step 2: 自动搬家图片至私有图床 (如果开启了自动上传)
             var replacements: [(id: Int, base64: String)] = []
             if autoUpload && !images.isEmpty {
-                statusMessage = "正在检测并上传图片 (\(images.count) 张)..."
-                replacements = await ImageUploader.uploadAll(images: images)
+                statusMessage = "正在准备上传 \(images.count) 张图片..."
+                uploadProgress = 0
+                speedMessage = ""
+                
+                // 使用 try-catch 捕获上传过程中的任何严重错误
+                do {
+                    replacements = try await ImageUploader.uploadAll(images: images) { [weak self] index, fileProgress, speed in
+                        guard let self = self else { return }
+                        let currentStep = Double(index - 1) + fileProgress
+                        self.uploadProgress = currentStep / Double(images.count)
+                        self.speedMessage = speed
+                        self.statusMessage = "正在上传图片 (\(index)/\(images.count))..."
+                    }
+                } catch {
+                    print("[ConversionCoordinator] ❌ 图片上传环节报错: \(error.localizedDescription)")
+                    phase = .error(message: "图片上传失败: \(error.localizedDescription)。请检查网络连接或稍后重试。")
+                    return
+                }
             }
 
             // Step 3: 执行 Markdown 转换 (如果存在替换则采用替换后的 DOM)

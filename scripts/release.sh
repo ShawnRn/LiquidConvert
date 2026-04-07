@@ -19,12 +19,11 @@ RELEASE_DIR="$PROJECT_DIR/releases"
 APPCAST_FILE="$PROJECT_DIR/appcast.xml"
 DMG_ARM64="$RELEASE_DIR/LiquidConvert_${VERSION}_arm64.dmg"
 DMG_X86_64="$RELEASE_DIR/LiquidConvert_${VERSION}_x86_64.dmg"
+PROJECT_FILE="$PROJECT_DIR/LiquidConvert.xcodeproj"
+SCHEME="LiquidConvert"
 
-# 定位签名工具
-# 尝试在 DerivedData 中搜索 sign_update
-# 注意：即使路径变化，find 命令也能找到它
 echo "正在搜索 sign_update 工具..."
-SIGN_TOOL=$(find ~/Library/Developer/Xcode/DerivedData -name "sign_update" -path "*/Sparkle/bin/sign_update" | head -n 1)
+SIGN_TOOL="${SIGN_TOOL_PATH:-$(find ~/Library/Developer/Xcode/DerivedData -name "sign_update" -path "*/Sparkle/bin/sign_update" | head -n 1)}"
 
 if [ -z "$SIGN_TOOL" ]; then
     echo "警告: 未找到 'sign_update' 工具。"
@@ -42,31 +41,41 @@ fi
 
 echo "--- 开始为版本 $VERSION 准备发布 ---"
 
-# 2. 生成基于日期的 Build 号 (YYYYMMDDxx)
-echo "正在生成流水号 Build 号..."
-TODAY=$(date +"%Y%m%d")
-# 从 appcast.xml 中查找今天已有的最高版本号
+# 2. 从项目配置中读取 Build 号，确保与 App 本体一致
+echo "正在读取项目中的 Build 号..."
+XCODE_SETTINGS=$(xcodebuild -showBuildSettings -project "$PROJECT_FILE" -scheme "$SCHEME" -configuration Release 2>/dev/null)
+SPARKLE_VERSION=$(echo "$XCODE_SETTINGS" | awk '/ CURRENT_PROJECT_VERSION = / {print $3; exit}')
+PROJECT_VERSION=$(echo "$XCODE_SETTINGS" | awk '/ MARKETING_VERSION = / {print $3; exit}')
+
+if [ -z "$SPARKLE_VERSION" ] || [ -z "$PROJECT_VERSION" ]; then
+    echo "错误: 无法从项目中读取版本号或 Build 号。"
+    exit 1
+fi
+
+if [ "$PROJECT_VERSION" != "$VERSION" ]; then
+    echo "错误: 传入版本号 $VERSION 与项目 MARKETING_VERSION ($PROJECT_VERSION) 不一致。"
+    exit 1
+fi
+
 if [ -f "$APPCAST_FILE" ]; then
-    LAST_BUILD=$(grep -oE "<sparkle:version>${TODAY}[0-9]{2}</sparkle:version>" "$APPCAST_FILE" | grep -oE "${TODAY}[0-9]{2}" | sort -nr | head -n 1)
-else
-    LAST_BUILD=""
+    LAST_BUILD=$(grep -oE '<sparkle:version>[0-9]+</sparkle:version>' "$APPCAST_FILE" | grep -oE '[0-9]+' | sort -nr | head -n 1)
+    if [ -n "$LAST_BUILD" ] && [ "$SPARKLE_VERSION" -lt "$LAST_BUILD" ]; then
+        echo "错误: 项目 Build 号 $SPARKLE_VERSION 小于现有 appcast 里的最新版本 $LAST_BUILD。"
+        exit 1
+    fi
 fi
 
-if [ -z "$LAST_BUILD" ]; then
-    SPARKLE_VERSION="${TODAY}00"
-else
-    # 提取最后两位并加 1
-    SUFFIX=${LAST_BUILD:8:2}
-    NEXT_SUFFIX=$(printf "%02d" $((10#$SUFFIX + 1)))
-    SPARKLE_VERSION="${TODAY}${NEXT_SUFFIX}"
-fi
-
-echo "生成的 Build 号 (sparkle:version): $SPARKLE_VERSION"
+echo "使用项目 Build 号 (sparkle:version): $SPARKLE_VERSION"
 
 # 3. 生成签名与获取大⼩
 echo "正在为双架构生成 EdDSA 签名..."
-SIG_ARM64=$($SIGN_TOOL -p "$DMG_ARM64")
-SIG_X86_64=$($SIGN_TOOL -p "$DMG_X86_64")
+if [ -n "${SPARKLE_PRIVATE_KEY:-}" ]; then
+    SIG_ARM64=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_TOOL" --ed-key-file - -p "$DMG_ARM64")
+    SIG_X86_64=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_TOOL" --ed-key-file - -p "$DMG_X86_64")
+else
+    SIG_ARM64=$("$SIGN_TOOL" -p "$DMG_ARM64")
+    SIG_X86_64=$("$SIGN_TOOL" -p "$DMG_X86_64")
+fi
 
 if [ -z "$SIG_ARM64" ] || [ -z "$SIG_X86_64" ]; then
     echo "错误: 签名生成失败，请确保 Sparkle 私钥已配置。"
@@ -104,7 +113,7 @@ fi
 ITEM_XML="        <item>
             <title>$VERSION</title>
             <pubDate>$PUB_DATE</pubDate>
-            <sparkle:version>${SPARKLE_VERSION//./}</sparkle:version>
+            <sparkle:version>$SPARKLE_VERSION</sparkle:version>
             <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url=\"$URL_ARM64\" length=\"$SIZE_ARM64\" type=\"application/octet-stream\" sparkle:os=\"macos\" sparkle:nativeArchitecture=\"arm64\" sparkle:edSignature=\"$SIG_ARM64\"/>
@@ -122,6 +131,11 @@ echo "$ITEM_XML" >> "$TEMP_FILE"
 sed -n '/<channel>/,$p' "$APPCAST_FILE" | tail -n +2 >> "$TEMP_FILE"
 
 mv "$TEMP_FILE" "$APPCAST_FILE"
+
+if command -v xmllint >/dev/null 2>&1; then
+    xmllint --noout "$APPCAST_FILE"
+    echo "appcast.xml 校验通过"
+fi
 
 # 6. 完成提示
 echo "--- 准备完成！ ---"

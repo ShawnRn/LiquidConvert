@@ -14,6 +14,13 @@ SCHEME="LiquidConvert"
 APP_NAME="LiquidConvert.app"
 ARCHIVE_PATH="$ROOT/.build/archive/${PROJECT_NAME}.xcarchive"
 APP_BUNDLE="$ROOT/${APP_NAME}"
+SKIP_DMG="${SKIP_DMG:-0}"
+
+if [[ -n "${BUILD_ARCHS:-}" ]]; then
+    read -r -a TARGET_ARCHS <<< "${BUILD_ARCHS}"
+else
+    TARGET_ARCHS=("arm64" "x86_64")
+fi
 
 # Detect version from Xcode project
 echo "==> Detecting version from project settings..."
@@ -38,7 +45,7 @@ echo "==> Resolving package dependencies..."
 xcodebuild -resolvePackageDependencies -project "${PROJECT_NAME}.xcodeproj" -scheme "${SCHEME}" -scmProvider xcode
 
 # 2. Build or Archive (Loop per architecture)
-for TARGET_ARCH in "arm64" "x86_64"; do
+for TARGET_ARCH in "${TARGET_ARCHS[@]}"; do
     echo "=================================================="
     echo "==> Starting build process for architecture: ${TARGET_ARCH}"
     echo "=================================================="
@@ -97,7 +104,9 @@ for TARGET_ARCH in "arm64" "x86_64"; do
     echo "==> Successfully created ${ARCH_APP_BUNDLE}"
 
     # 4. Create DMG
-    if command -v create-dmg &> /dev/null; then
+    if [[ "${SKIP_DMG}" == "1" ]]; then
+        echo "==> Skipping DMG creation for ${TARGET_ARCH} (SKIP_DMG=1)"
+    elif command -v create-dmg &> /dev/null; then
         echo "==> Creating DMG with create-dmg for ${TARGET_ARCH}..."
         DMG_DIR="$ROOT/releases"
         mkdir -p "$DMG_DIR"

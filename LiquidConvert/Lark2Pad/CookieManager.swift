@@ -18,22 +18,26 @@ final class CookieManager {
         let store = webView.configuration.websiteDataStore.httpCookieStore
         let cookies = await store.fetchAllCookies()
         
-        // 关注 ifanr 相关域名的关键 Cookie
+        // 仅同步目标域名的 Cookie，避免混入无关站点状态
         let targetCookies = cookies.filter { 
-            $0.domain.contains("ifanr.com") || $0.domain.contains("ifanr.cn")
+            $0.domain.contains(SecureRuntimeConfig.ifanrDomain) || $0.domain.contains(SecureRuntimeConfig.ifanrCNDomain)
         }
-        
-        if !targetCookies.isEmpty {
-            self.cachedCookies = targetCookies
-            saveToDisk(cookies: targetCookies)
-            let domains = Set(targetCookies.map { $0.domain }).joined(separator: ", ")
-            print("[CookieManager] 已同步 \(targetCookies.count) 条来自 [\(domains)] 的 Cookie")
-            
-            // 打印关键 Cookie 是否存在
-            let hasToken = targetCookies.contains { $0.name == "token" }
-            let hasSid = targetCookies.contains { $0.name == "express_sid" }
-            print("[CookieManager] 鉴权状态: token=\(hasToken), express_sid=\(hasSid)")
+
+        self.cachedCookies = targetCookies
+
+        if targetCookies.isEmpty {
+            UserDefaults.standard.removeObject(forKey: cookieKey)
+            print("[CookieManager] 未检测到可复用会话，已清理本地缓存")
+            return
         }
+
+        saveToDisk(cookies: targetCookies)
+        let domains = Set(targetCookies.map { $0.domain }).joined(separator: ", ")
+        print("[CookieManager] 已同步 \(targetCookies.count) 条来自 [\(domains)] 的 Cookie")
+
+        let hasPrimaryCookie = targetCookies.contains { $0.name == SecureRuntimeConfig.etherpadTokenCookieName }
+        let hasSessionCookie = targetCookies.contains { $0.name == SecureRuntimeConfig.etherpadSessionCookieName }
+        print("[CookieManager] 会话状态: primary=\(hasPrimaryCookie), session=\(hasSessionCookie)")
     }
     
     /// 获取完整的 Cookie 字符串用于 HTTP Header
@@ -43,8 +47,8 @@ final class CookieManager {
     
     /// 检查是否存有关键 Token
     var hasValidSession: Bool {
-        let hasToken = cachedCookies.contains { $0.name == "token" && !$0.value.isEmpty }
-        let hasSid = cachedCookies.contains { $0.name == "express_sid" && !$0.value.isEmpty }
+        let hasToken = cachedCookies.contains { $0.name == SecureRuntimeConfig.etherpadTokenCookieName && !$0.value.isEmpty }
+        let hasSid = cachedCookies.contains { $0.name == SecureRuntimeConfig.etherpadSessionCookieName && !$0.value.isEmpty }
         return hasToken || hasSid
     }
     

@@ -19,7 +19,7 @@ enum SettingsTab: String {
 
 // 1. 使用枚举定义 Tab (Moved from ContentView)
 enum TabIdentifier: String, CaseIterable {
-    case home, audio, compress, stitch, videogif, icns, lark2pad, settings
+    case home, audio, compress, stitch, videogif, icns, lark2pad, gallery, settings
 }
 
 @MainActor
@@ -148,8 +148,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
     // 🔥 防止打开新的空白窗口
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        print("🚫 阻止打开空白窗口")
-        return false
+        let shouldOpenWindow = !shouldHideWindow
+        print(shouldOpenWindow ? "🪟 允许主窗口创建" : "🚫 静默模式：阻止主窗口创建")
+        return shouldOpenWindow
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if flag {
+            return true
+        }
+
+        if let window = sender.windows.first {
+            window.makeKeyAndOrderFront(nil)
+            sender.activate(ignoringOtherApps: true)
+            print("🪟 恢复已有主窗口")
+            return false
+        }
+
+        print("🪟 允许系统重新创建主窗口")
+        return true
     }
 
     // MARK: - Dock 拖拽防抖处理
