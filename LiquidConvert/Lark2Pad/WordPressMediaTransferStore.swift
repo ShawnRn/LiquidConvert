@@ -260,12 +260,14 @@ private final class WordPressMediaFilePromiseDelegate: NSObject, NSFilePromisePr
         writePromiseTo url: URL,
         completionHandler: @escaping (Error?) -> Void
     ) {
-        store.fulfillFilePromise(for: item, in: url) { result in
-            switch result {
-            case .success:
-                completionHandler(nil)
-            case .failure(let error):
-                completionHandler(error)
+        Task { @MainActor [item, store] in
+            store.fulfillFilePromise(for: item, in: url) { result in
+                switch result {
+                case .success:
+                    completionHandler(nil)
+                case .failure(let error):
+                    completionHandler(error)
+                }
             }
         }
     }
