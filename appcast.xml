@@ -3,12 +3,12 @@
     <channel>
         <item>
             <title>3.1.5</title>
-            <pubDate>Tue, 07 Apr 2026 14:47:18 +0800</pubDate>
-            <sparkle:version>2026040700</sparkle:version>
+            <pubDate>Tue, 07 Apr 2026 15:15:39 +0800</pubDate>
+            <sparkle:version>2026040701</sparkle:version>
             <sparkle:shortVersionString>3.1.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.1.5/LiquidConvert_3.1.5_arm64.dmg" length="3909781" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="arm64" sparkle:edSignature="XC6k1YKhMCL3KpJzOIQaatNUSpGETIetEygwOLmiPXV85e0iOVDjXeG0zcC0csMZo8heXIVdbgWxY5yigliwBg=="/>
-            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.1.5/LiquidConvert_3.1.5_x86_64.dmg" length="4005868" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="x86_64" sparkle:edSignature="vhl0u6jZMJxycObokKmg+Z3B7kE8Ezt84rNmxKNlFO0NWhpMNTZIcOmS0Pm9iouLopyXFa0GZk3Xa5NjoyuCBw=="/>
+            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.1.5/LiquidConvert_3.1.5_arm64.dmg" length="3907976" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="arm64" sparkle:edSignature="ESG5ykj7CmGvp3XJbh8BlQyw+jOgbOohR2ml0n1PZ3TJaAv6ZsvUTdF4hPZa6Ntqc6ky6w2t1O5+AqOHKu39CA=="/>
+            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.1.5/LiquidConvert_3.1.5_x86_64.dmg" length="4006830" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="x86_64" sparkle:edSignature="pBndL39iWmXMSrBjDh+iwYeqRhjgJIpsySDw1OE3JdfBRSf0e6SbhbgMzf1vz2XPHodZu2rHSFQaNpo2gmu9Bw=="/>
         </item>
         <item>
             <title>3.1.4</title>
