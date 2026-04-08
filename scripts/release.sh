@@ -109,6 +109,28 @@ if [ ! -f "$APPCAST_FILE" ]; then
 EOF
 fi
 
+# 移除同一 build 的旧条目，保证 workflow 重跑时 appcast 保持幂等
+python3 - "$APPCAST_FILE" "$SPARKLE_VERSION" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+appcast_path = Path(sys.argv[1])
+sparkle_version = sys.argv[2]
+content = appcast_path.read_text(encoding="utf-8")
+pattern = re.compile(
+    r'\s*<item>\s*'
+    r'<title>.*?</title>\s*'
+    r'<pubDate>.*?</pubDate>\s*'
+    rf'<sparkle:version>{re.escape(sparkle_version)}</sparkle:version>.*?'
+    r'</item>\s*',
+    re.S,
+)
+updated = re.sub(pattern, '', content)
+if updated != content:
+    appcast_path.write_text(updated, encoding="utf-8")
+PY
+
 # 生成新的 ITEM XML (多 enclosure)
 ITEM_XML="        <item>
             <title>$VERSION</title>
