@@ -38,12 +38,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          if xcodebuild -version | grep -q '^Xcode 26'; then
+          ACTIVE_XCODE_VERSION="$(xcodebuild -version)"
+
+          if grep -q '^Xcode 26' <<<"$ACTIVE_XCODE_VERSION"; then
             echo "Xcode 26 already active"
           else
             while IFS= read -r candidate; do
-              DEVELOPER_DIR="${candidate}/Contents/Developer" xcodebuild -version | grep -q '^Xcode 26' || continue
+              CANDIDATE_VERSION="$(DEVELOPER_DIR="${candidate}/Contents/Developer" xcodebuild -version)"
+              grep -q '^Xcode 26' <<<"$CANDIDATE_VERSION" || continue
               sudo xcode-select -switch "${candidate}/Contents/Developer"
+              ACTIVE_XCODE_VERSION="$CANDIDATE_VERSION"
               break
             done < <(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V)
           fi
@@ -52,7 +56,8 @@ jobs:
           xcrun --sdk macosx --show-sdk-version
           sw_vers
 
-          if ! xcodebuild -version | grep -q '^Xcode 26'; then
+          ACTIVE_XCODE_VERSION="$(xcodebuild -version)"
+          if ! grep -q '^Xcode 26' <<<"$ACTIVE_XCODE_VERSION"; then
             echo "Expected Xcode 26 on the release runner, but a different toolchain is active."
             exit 1
           fi
