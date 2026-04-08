@@ -1,16 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
-    <channel>
+    <channel><item>
         <item>
             <title>3.1.5</title>
-            <pubDate>Wed, 08 Apr 2026 22:57:00 +0800</pubDate>
+            <pubDate>Wed, 08 Apr 2026 15:14:49 +0000</pubDate>
             <sparkle:version>2026040800</sparkle:version>
             <sparkle:shortVersionString>3.1.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.1.5/LiquidConvert_3.1.5_arm64.dmg" length="5283166" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="arm64" sparkle:edSignature="hNoDFRbfCRdl70c7Ia2EdoU0hF98OBtOzYojzM/puHt05WG6HVc+A+AEBaoX/z6QXjOQIE1uBBTobeEy1NORCQ=="/>
-            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.1.5/LiquidConvert_3.1.5_x86_64.dmg" length="5415070" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="x86_64" sparkle:edSignature="t+MPVumejLKJUHE0cMdUjpZXOfqopOIyjH9SMRkdTasEw9vKvxBhh98BYD1lgeNgkKGOls2t6Ojf8tqhcxFWBg=="/>
+            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.1.5/LiquidConvert_3.1.5_arm64.dmg" length="5364312" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="arm64" sparkle:edSignature="FsIYRZmnAIMNAz1uicalLYJVIrsFvoCgGtWlJLDmItL/XoLVR3+i0lNuhWFVer5I8lkbHy9a9VoIdm1RrwcXAA=="/>
+            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.1.5/LiquidConvert_3.1.5_x86_64.dmg" length="5389831" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="x86_64" sparkle:edSignature="woOU59+/huPwT6qvJT5M8r8a97Tjk/Vifga1TfdULQJ5Xt24GU8T3ki3W2ObNaS8FZYq154k4XLd25PT+VR1Dw=="/>
         </item>
-        <item>
             <title>3.1.5</title>
             <pubDate>Tue, 07 Apr 2026 15:15:39 +0800</pubDate>
             <sparkle:version>2026040701</sparkle:version>
