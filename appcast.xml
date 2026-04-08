@@ -3,6 +3,15 @@
     <channel>
         <item>
             <title>3.1.5</title>
+            <pubDate>Wed, 08 Apr 2026 22:57:00 +0800</pubDate>
+            <sparkle:version>2026040800</sparkle:version>
+            <sparkle:shortVersionString>3.1.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.1.5/LiquidConvert_3.1.5_arm64.dmg" length="5283166" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="arm64" sparkle:edSignature="hNoDFRbfCRdl70c7Ia2EdoU0hF98OBtOzYojzM/puHt05WG6HVc+A+AEBaoX/z6QXjOQIE1uBBTobeEy1NORCQ=="/>
+            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.1.5/LiquidConvert_3.1.5_x86_64.dmg" length="5415070" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="x86_64" sparkle:edSignature="t+MPVumejLKJUHE0cMdUjpZXOfqopOIyjH9SMRkdTasEw9vKvxBhh98BYD1lgeNgkKGOls2t6Ojf8tqhcxFWBg=="/>
+        </item>
+        <item>
+            <title>3.1.5</title>
             <pubDate>Tue, 07 Apr 2026 15:15:39 +0800</pubDate>
             <sparkle:version>2026040701</sparkle:version>
             <sparkle:shortVersionString>3.1.5</sparkle:shortVersionString>
