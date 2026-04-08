@@ -16,6 +16,58 @@ ARCHIVE_PATH="$ROOT/.build/archive/${PROJECT_NAME}.xcarchive"
 APP_BUNDLE="$ROOT/${APP_NAME}"
 SKIP_DMG="${SKIP_DMG:-0}"
 
+create_dmg_with_layout() {
+    local app_bundle="$1"
+    local dmg_path="$2"
+    local target_arch="$3"
+    local display_app_name="${PROJECT_NAME}.app"
+    local dmg_dir
+    dmg_dir=$(dirname "$dmg_path")
+    local styled_dmg_path="${dmg_dir}/${PROJECT_NAME} ${MARKETING_VERSION}.dmg"
+    local staging_dir
+    staging_dir=$(mktemp -d "${ROOT}/.build/dmg-${target_arch}.XXXXXX")
+    local fallback_volume
+    fallback_volume="${staging_dir}/${PROJECT_NAME}"
+
+    cleanup_dmg_staging() {
+        rm -rf "$staging_dir"
+    }
+    trap cleanup_dmg_staging RETURN
+
+    mkdir -p "$staging_dir"
+    cp -R "$app_bundle" "${staging_dir}/${display_app_name}"
+
+    if command -v create-dmg >/dev/null 2>&1; then
+        echo "==> Creating styled DMG with create-dmg for ${target_arch}..."
+        rm -f "${styled_dmg_path}"
+        create-dmg \
+            --overwrite \
+            --dmg-title "${PROJECT_NAME}" \
+            --no-code-sign \
+            "${staging_dir}/${display_app_name}" \
+            "${dmg_dir}"
+
+        if [[ -f "${styled_dmg_path}" && "${styled_dmg_path}" != "${dmg_path}" ]]; then
+            mv -f "${styled_dmg_path}" "${dmg_path}"
+        fi
+    fi
+
+    if [[ ! -f "${dmg_path}" ]]; then
+        echo "==> Falling back to plain DMG with Applications shortcut for ${target_arch}..."
+        rm -rf "${fallback_volume}"
+        mkdir -p "${fallback_volume}"
+        cp -R "$app_bundle" "${fallback_volume}/${display_app_name}"
+        ln -s /Applications "${fallback_volume}/Applications"
+
+        hdiutil create \
+            -volname "${PROJECT_NAME}" \
+            -srcfolder "${fallback_volume}" \
+            -ov \
+            -format UDZO \
+            "${dmg_path}"
+    fi
+}
+
 if [[ -n "${BUILD_ARCHS:-}" ]]; then
     read -r -a TARGET_ARCHS <<< "${BUILD_ARCHS}"
 else
@@ -107,7 +159,7 @@ for TARGET_ARCH in "${TARGET_ARCHS[@]}"; do
     if [[ "${SKIP_DMG}" == "1" ]]; then
         echo "==> Skipping DMG creation for ${TARGET_ARCH} (SKIP_DMG=1)"
     else
-        echo "==> Creating DMG with hdiutil for ${TARGET_ARCH}..."
+        echo "==> Creating DMG for ${TARGET_ARCH}..."
         DMG_DIR="$ROOT/releases"
         mkdir -p "$DMG_DIR"
         
@@ -116,12 +168,7 @@ for TARGET_ARCH in "${TARGET_ARCHS[@]}"; do
         DMG_FINAL_PATH="$DMG_DIR/$DMG_FINAL_NAME"
         rm -f "$DMG_FINAL_PATH"
 
-        hdiutil create \
-            -volname "${PROJECT_NAME}" \
-            -srcfolder "${ARCH_APP_BUNDLE}" \
-            -ov \
-            -format UDZO \
-            "$DMG_FINAL_PATH"
+        create_dmg_with_layout "${ARCH_APP_BUNDLE}" "${DMG_FINAL_PATH}" "${TARGET_ARCH}"
 
         if [[ -f "$DMG_FINAL_PATH" ]]; then
             echo "==> Successfully created $DMG_FINAL_PATH"
