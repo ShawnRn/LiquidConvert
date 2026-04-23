@@ -69,5 +69,10 @@
      --title "LiquidConvert $VERSION" \
      --notes "在此输入更新日志"
    ```
-3. **运行发布脚本更新本地 `appcast.xml`**：运行 `./scripts/release.sh <version>`。该脚本会自动为双架构生成 EdDSA 签名并组合到 `appcast.xml` 中。
+3. **运行发布脚本更新本地 `appcast.xml`**：运行 `./scripts/release.sh <version>`。该脚本会优先下载 GitHub Release 上“实际可被用户下载到”的 DMG，并以远端资产为准生成 Sparkle 的 `length` 与 `edSignature`。
 4. **单独推送 `appcast.xml` (最后一步)**：推送该文件以激活 Sparkle 双架构自适应更新。
+
+### Sparkle 额外铁律
+- **禁止**在未创建 GitHub Release 的情况下先生成或推送 `appcast.xml`。
+- **禁止**假设“本地 DMG == GitHub 上可下载到的 DMG”；必须以 `release.sh` 下载回来的远端资产为准生成 Sparkle 签名。
+- 如果需要“替换最新更新”，优先保持同一版本号并原地替换对应 Release / appcast，不要额外新开一个用户可见版本去掩盖签名事故。

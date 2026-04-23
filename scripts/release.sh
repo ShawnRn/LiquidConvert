@@ -21,6 +21,12 @@ DMG_ARM64="$RELEASE_DIR/LiquidConvert_${VERSION}_arm64.dmg"
 DMG_X86_64="$RELEASE_DIR/LiquidConvert_${VERSION}_x86_64.dmg"
 PROJECT_FILE="$PROJECT_DIR/LiquidConvert.xcodeproj"
 SCHEME="LiquidConvert"
+REMOTE_VERIFY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/liquidconvert-release-verify.XXXXXX")"
+
+cleanup() {
+    rm -rf "$REMOTE_VERIFY_DIR"
+}
+trap cleanup EXIT
 
 echo "正在搜索 sign_update 工具..."
 SIGN_TOOL="${SIGN_TOOL_PATH:-$(find ~/Library/Developer/Xcode/DerivedData -name "sign_update" -path "*/Sparkle/bin/sign_update" | head -n 1)}"
@@ -68,13 +74,47 @@ fi
 echo "使用项目 Build 号 (sparkle:version): $SPARKLE_VERSION"
 
 # 3. 生成签名与获取大⼩
+PUB_DATE=$(date -R)
+
+URL_ARM64="https://github.com/ShawnRn/LiquidConvert/releases/download/v$VERSION/LiquidConvert_${VERSION}_arm64.dmg"
+URL_X86_64="https://github.com/ShawnRn/LiquidConvert/releases/download/v$VERSION/LiquidConvert_${VERSION}_x86_64.dmg"
+
+REMOTE_ARM64="$REMOTE_VERIFY_DIR/LiquidConvert_${VERSION}_arm64.dmg"
+REMOTE_X86_64="$REMOTE_VERIFY_DIR/LiquidConvert_${VERSION}_x86_64.dmg"
+
+echo "正在校验 GitHub Release 上实际可下载的资产..."
+if curl -L --fail --retry 5 --retry-delay 2 --retry-all-errors -o "$REMOTE_ARM64" "$URL_ARM64" \
+   && curl -L --fail --retry 5 --retry-delay 2 --retry-all-errors -o "$REMOTE_X86_64" "$URL_X86_64"; then
+    LOCAL_SHA_ARM64=$(shasum -a 256 "$DMG_ARM64" | awk '{print $1}')
+    LOCAL_SHA_X86_64=$(shasum -a 256 "$DMG_X86_64" | awk '{print $1}')
+    REMOTE_SHA_ARM64=$(shasum -a 256 "$REMOTE_ARM64" | awk '{print $1}')
+    REMOTE_SHA_X86_64=$(shasum -a 256 "$REMOTE_X86_64" | awk '{print $1}')
+
+    if [ "$LOCAL_SHA_ARM64" != "$REMOTE_SHA_ARM64" ] || [ "$LOCAL_SHA_X86_64" != "$REMOTE_SHA_X86_64" ]; then
+        echo "警告: GitHub Release 实际下载到的资产与本地 DMG 不一致，将以远端资产为准生成 appcast 签名。"
+        echo "arm64 local:  $LOCAL_SHA_ARM64"
+        echo "arm64 remote: $REMOTE_SHA_ARM64"
+        echo "x86_64 local:  $LOCAL_SHA_X86_64"
+        echo "x86_64 remote: $REMOTE_SHA_X86_64"
+        SIGN_SOURCE_ARM64="$REMOTE_ARM64"
+        SIGN_SOURCE_X86_64="$REMOTE_X86_64"
+    else
+        SIGN_SOURCE_ARM64="$DMG_ARM64"
+        SIGN_SOURCE_X86_64="$DMG_X86_64"
+    fi
+else
+    echo "警告: 无法下载 GitHub Release 资产，回退为本地 DMG 生成 appcast 签名。"
+    SIGN_SOURCE_ARM64="$DMG_ARM64"
+    SIGN_SOURCE_X86_64="$DMG_X86_64"
+fi
+
 echo "正在为双架构生成 EdDSA 签名..."
 if [ -n "${SPARKLE_PRIVATE_KEY:-}" ]; then
-    SIG_ARM64=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_TOOL" --ed-key-file - -p "$DMG_ARM64")
-    SIG_X86_64=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_TOOL" --ed-key-file - -p "$DMG_X86_64")
+    SIG_ARM64=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_TOOL" --ed-key-file - -p "$SIGN_SOURCE_ARM64")
+    SIG_X86_64=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_TOOL" --ed-key-file - -p "$SIGN_SOURCE_X86_64")
 else
-    SIG_ARM64=$("$SIGN_TOOL" -p "$DMG_ARM64")
-    SIG_X86_64=$("$SIGN_TOOL" -p "$DMG_X86_64")
+    SIG_ARM64=$("$SIGN_TOOL" -p "$SIGN_SOURCE_ARM64")
+    SIG_X86_64=$("$SIGN_TOOL" -p "$SIGN_SOURCE_X86_64")
 fi
 
 if [ -z "$SIG_ARM64" ] || [ -z "$SIG_X86_64" ]; then
@@ -82,12 +122,8 @@ if [ -z "$SIG_ARM64" ] || [ -z "$SIG_X86_64" ]; then
     exit 1
 fi
 
-SIZE_ARM64=$(stat -f%z "$DMG_ARM64")
-SIZE_X86_64=$(stat -f%z "$DMG_X86_64")
-PUB_DATE=$(date -R)
-
-URL_ARM64="https://github.com/ShawnRn/LiquidConvert/releases/download/v$VERSION/LiquidConvert_${VERSION}_arm64.dmg"
-URL_X86_64="https://github.com/ShawnRn/LiquidConvert/releases/download/v$VERSION/LiquidConvert_${VERSION}_x86_64.dmg"
+SIZE_ARM64=$(stat -f%z "$SIGN_SOURCE_ARM64")
+SIZE_X86_64=$(stat -f%z "$SIGN_SOURCE_X86_64")
 
 echo "arm64 签名: $SIG_ARM64, 大小: $SIZE_ARM64"
 echo "x86_64 签名: $SIG_X86_64, 大小: $SIZE_X86_64"
