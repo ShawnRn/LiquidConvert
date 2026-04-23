@@ -19,7 +19,7 @@ enum SettingsTab: String {
 
 // 1. 使用枚举定义 Tab (Moved from ContentView)
 enum TabIdentifier: String, CaseIterable {
-    case home, audio, compress, stitch, videogif, icns, lark2pad, gallery, settings
+    case home, audio, compress, stitch, videogif, icns, aidoc, lark2pad, gallery, settings
 }
 
 @MainActor

@@ -38,6 +38,14 @@ struct LicenseView: View {
             url: "https://github.com/tasy5kg/CuteGIF",
             copyright: "Copyright (c) 2026 tasy5kg",
             tags: ["Core"]
+        ),
+        LicenseItem(
+            name: "MarkItDown",
+            licenseType: "MIT",
+            description: "A Python tool for converting documents and webpages into Markdown.",
+            url: "https://github.com/microsoft/markitdown",
+            copyright: "Copyright (c) Microsoft Corporation",
+            tags: ["AI 文档提取", "Runtime"]
         )
     ]
     

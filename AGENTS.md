@@ -76,3 +76,5 @@
 - **禁止**在未创建 GitHub Release 的情况下先生成或推送 `appcast.xml`。
 - **禁止**假设“本地 DMG == GitHub 上可下载到的 DMG”；必须以 `release.sh` 下载回来的远端资产为准生成 Sparkle 签名。
 - 如果需要“替换最新更新”，优先保持同一版本号并原地替换对应 Release / appcast，不要额外新开一个用户可见版本去掩盖签名事故。
+- **禁止**带着脏工作区直接发版。发版前必须先确认 `git status --short` 为空，或者至少明确只有本次要发布的改动被 stage/commit。
+- 新模块上线前，必须检查入口链路已经入库：`TabIdentifier` / `ContentView` 侧边栏入口 / 主视图路由 / 依赖声明（如 License）要一起进入同一个 release 提交；不能只把实现文件留在仓库里却漏掉入口注册。
