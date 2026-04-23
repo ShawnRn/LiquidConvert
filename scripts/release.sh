@@ -145,14 +145,15 @@ ITEM_XML="        <item>
         </item>"
 
 # 重新构建 appcast，顺手修复历史上残留的结构问题，并保证同一 build 幂等
-python3 - "$APPCAST_FILE" "$SPARKLE_VERSION" "$ITEM_XML" <<'PY'
+python3 - "$APPCAST_FILE" "$SPARKLE_VERSION" "$VERSION" "$ITEM_XML" <<'PY'
 import re
 import sys
 from pathlib import Path
 
 appcast_path = Path(sys.argv[1])
 sparkle_version = sys.argv[2]
-item_xml = sys.argv[3]
+short_version = sys.argv[3]
+item_xml = sys.argv[4]
 
 if appcast_path.exists():
     content = appcast_path.read_text(encoding="utf-8")
@@ -160,7 +161,12 @@ else:
     content = ""
 
 items = re.findall(r"<item>.*?</item>", content, re.S)
-items = [item for item in items if f"<sparkle:version>{sparkle_version}</sparkle:version>" not in item]
+items = [
+    item
+    for item in items
+    if f"<sparkle:version>{sparkle_version}</sparkle:version>" not in item
+    and f"<sparkle:shortVersionString>{short_version}</sparkle:shortVersionString>" not in item
+]
 
 rebuilt = "\n".join(
     [

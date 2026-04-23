@@ -38,6 +38,7 @@
 ### 2. 性能与资源
 - 所有耗时操作（转换、提取帧、拼接）**必须**在 `Task.detached` 或 `Task` 异步上下文中执行，禁止阻塞 UI 线程。
 - 视频处理使用硬件加速编码，缩略图生成使用 `AVAssetImageGenerator`。
+- **AI 文档提取必须开箱即用**：`MarkItDown` 运行时不得依赖用户预装 Homebrew 或 Python 3.10+。如果系统 Python 不满足版本要求，App 必须自动准备受控的兼容 Python 运行时，再创建 venv 并安装固定版本的文档提取依赖。
 
 ### 3. 构建验证
 - 进行任何功能迭代后，务必在终端执行 `./scripts/compile_and_run.sh` 验证应用启动和基本逻辑流。
@@ -76,6 +77,7 @@
 - **禁止**在未创建 GitHub Release 的情况下先生成或推送 `appcast.xml`。
 - **禁止**假设“本地 DMG == GitHub 上可下载到的 DMG”；必须以 `release.sh` 下载回来的远端资产为准生成 Sparkle 签名。
 - 如果需要“替换最新更新”，优先保持同一版本号并原地替换对应 Release / appcast，不要额外新开一个用户可见版本去掩盖签名事故。
+- 同一用户可见版本内替换有问题的更新时，必须提升 `CURRENT_PROJECT_VERSION`，否则已安装旧 build 的设备不会识别到修复包。
 - **禁止**带着脏工作区直接发版。发版前必须先确认 `git status --short` 为空，或者至少明确只有本次要发布的改动被 stage/commit。
 - 新模块上线前，必须检查入口链路已经入库：`TabIdentifier` / `ContentView` 侧边栏入口 / 主视图路由 / 依赖声明（如 License）要一起进入同一个 release 提交；不能只把实现文件留在仓库里却漏掉入口注册。
 - **禁止**从 tag 工作流的 detached HEAD 直接硬推 `appcast.xml` 到 `main`。GitHub Actions 或手动热修提交 appcast 前，必须先 `fetch origin main`，基于最新 `origin/main` 重新应用生成好的 appcast，再提交推送。

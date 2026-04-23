@@ -24,6 +24,11 @@
 - Before `appcast.xml` is committed, re-download every release asset from GitHub and use those remote bytes to compute `sparkle:edSignature` and `length`.
 - If the downloaded asset hash differs from the local DMG hash, treat the remote asset as the source of truth for Sparkle metadata, otherwise the app will show “更新未正确签名”.
 - If the latest published update is broken, replace the existing release/appcast in place instead of minting a new user-visible version just to bypass the bad metadata.
+- When replacing a broken package under the same user-visible version, bump `CURRENT_PROJECT_VERSION` before building so installed apps can detect the replacement build.
+
+## Managed Runtime Rule
+- AI document extraction must be self-bootstrapping on a clean Mac. Do not rely on `/usr/bin/python3` because macOS may provide Python 3.9, while `markitdown==0.1.5` requires Python 3.10+.
+- If no compatible Python exists, the app must download and cache the project-pinned standalone Python runtime, then build the MarkItDown venv from that runtime.
 
 ## Workspace And Entry-Point Rule
 - Never publish from a dirty worktree by accident. Before building the release DMG, verify `git status --short` is clean or that only the intended release files are staged and committed.

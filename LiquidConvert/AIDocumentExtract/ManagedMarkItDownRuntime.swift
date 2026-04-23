@@ -31,8 +31,11 @@ struct AIDocumentExtractionResult {
 actor ManagedMarkItDownRuntime {
     static let shared = ManagedMarkItDownRuntime()
 
-    private let managedVersion = "0.1.5"
+    private let managedVersion = "markitdown-0.1.5-python-3.10"
     private let packageSpec = "markitdown[pdf,docx,pptx,xlsx,xls]==0.1.5"
+    private let minimumPythonVersion = PythonVersion(major: 3, minor: 10)
+    private let standalonePythonRelease = "20260414"
+    private let standalonePythonVersion = "3.10.20"
 
     struct RuntimeInfo {
         let rootDirectory: URL
@@ -48,6 +51,7 @@ actor ManagedMarkItDownRuntime {
         let versionMarker = rootDirectory.appendingPathComponent("managed-version.txt")
 
         if FileManager.default.fileExists(atPath: cliExecutable.path),
+           (try? pythonVersion(for: pythonExecutable))?.isAtLeast(minimumPythonVersion) == true,
            let installedVersion = try? String(contentsOf: versionMarker, encoding: .utf8)
                 .trimmingCharacters(in: .whitespacesAndNewlines),
            installedVersion == managedVersion
@@ -62,7 +66,10 @@ actor ManagedMarkItDownRuntime {
         progress?("正在准备 AI 文档提取运行环境…")
         try recreateRuntimeDirectory(at: rootDirectory)
 
-        let systemPython = try locateSystemPython()
+        let systemPython = try await locateCompatiblePython(
+            rootDirectory: rootDirectory,
+            progress: progress
+        )
         progress?("正在创建独立 Python 环境…")
         _ = try Self.runCommand(
             executable: systemPython,
@@ -165,7 +172,10 @@ actor ManagedMarkItDownRuntime {
         try fm.createDirectory(at: url, withIntermediateDirectories: true, attributes: nil)
     }
 
-    private func locateSystemPython() throws -> URL {
+    private func locateCompatiblePython(
+        rootDirectory: URL,
+        progress: (@Sendable (String) -> Void)?
+    ) async throws -> URL {
         let fm = FileManager.default
         let candidates = [
             "/opt/homebrew/bin/python3",
@@ -173,26 +183,136 @@ actor ManagedMarkItDownRuntime {
             "/usr/bin/python3",
         ]
 
-        if let path = candidates.first(where: { fm.fileExists(atPath: $0) }) {
-            return URL(fileURLWithPath: path)
+        for path in candidates where fm.fileExists(atPath: path) {
+            let url = URL(fileURLWithPath: path)
+            if (try? pythonVersion(for: url))?.isAtLeast(minimumPythonVersion) == true {
+                return url
+            }
         }
 
-        let whichResult = try Self.runCommand(
+        let whichResult = ((try? Self.runCommand(
             executable: URL(fileURLWithPath: "/usr/bin/env"),
             args: ["which", "python3"],
+            currentDirectoryURL: nil
+        )) ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !whichResult.isEmpty {
+            let url = URL(fileURLWithPath: whichResult)
+            if (try? pythonVersion(for: url))?.isAtLeast(minimumPythonVersion) == true {
+                return url
+            }
+        }
+
+        progress?("未检测到 Python 3.10+，正在准备内置兼容运行时…")
+        return try await prepareStandalonePython(rootDirectory: rootDirectory, progress: progress)
+    }
+
+    private func prepareStandalonePython(
+        rootDirectory: URL,
+        progress: (@Sendable (String) -> Void)?
+    ) async throws -> URL {
+        let fm = FileManager.default
+        let runtimeDirectory = rootDirectory.appendingPathComponent("python-runtime", isDirectory: true)
+        let marker = runtimeDirectory.appendingPathComponent("python-runtime-version.txt")
+
+        if let python = findStandalonePython(in: runtimeDirectory),
+           (try? pythonVersion(for: python))?.isAtLeast(minimumPythonVersion) == true,
+           let installedVersion = try? String(contentsOf: marker, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+           installedVersion == standalonePythonMarker
+        {
+            return python
+        }
+
+        if fm.fileExists(atPath: runtimeDirectory.path) {
+            try fm.removeItem(at: runtimeDirectory)
+        }
+        try fm.createDirectory(at: runtimeDirectory, withIntermediateDirectories: true)
+
+        let archiveURL = runtimeDirectory.appendingPathComponent("python-standalone.tar.gz")
+        progress?("正在下载内置 Python 运行时…")
+        _ = try Self.runCommand(
+            executable: URL(fileURLWithPath: "/usr/bin/curl"),
+            args: [
+                "-L",
+                "--fail",
+                "--retry", "5",
+                "--retry-delay", "2",
+                "--retry-all-errors",
+                "-o", archiveURL.path,
+                standalonePythonDownloadURL.absoluteString,
+            ],
+            currentDirectoryURL: runtimeDirectory
+        )
+
+        progress?("正在解压内置 Python 运行时…")
+        _ = try Self.runCommand(
+            executable: URL(fileURLWithPath: "/usr/bin/tar"),
+            args: ["-xzf", archiveURL.path, "-C", runtimeDirectory.path],
+            currentDirectoryURL: runtimeDirectory
+        )
+        try? fm.removeItem(at: archiveURL)
+
+        guard let python = findStandalonePython(in: runtimeDirectory),
+              (try? pythonVersion(for: python))?.isAtLeast(minimumPythonVersion) == true
+        else {
+            throw NSError(
+                domain: "ManagedMarkItDownRuntime",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "内置 Python 运行时准备失败，请检查网络后重试。"]
+            )
+        }
+
+        try standalonePythonMarker.write(to: marker, atomically: true, encoding: .utf8)
+        return python
+    }
+
+    private var standalonePythonMarker: String {
+        "\(standalonePythonVersion)+\(standalonePythonRelease)-\(standaloneArchitecture)"
+    }
+
+    private var standalonePythonDownloadURL: URL {
+        URL(string: "https://github.com/astral-sh/python-build-standalone/releases/download/\(standalonePythonRelease)/cpython-\(standalonePythonVersion)%2B\(standalonePythonRelease)-\(standaloneArchitecture)-apple-darwin-install_only.tar.gz")!
+    }
+
+    private var standaloneArchitecture: String {
+        #if arch(arm64)
+        return "aarch64"
+        #else
+        return "x86_64"
+        #endif
+    }
+
+    private func findStandalonePython(in directory: URL) -> URL? {
+        let candidates = [
+            directory.appendingPathComponent("python/install/bin/python3"),
+            directory.appendingPathComponent("install/bin/python3"),
+            directory.appendingPathComponent("python/bin/python3"),
+            directory.appendingPathComponent("bin/python3"),
+        ]
+
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }
+    }
+
+    private func pythonVersion(for executable: URL) throws -> PythonVersion {
+        let output = try Self.runCommand(
+            executable: executable,
+            args: ["-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
             currentDirectoryURL: nil
         )
         .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard !whichResult.isEmpty else {
+        let parts = output.split(separator: ".").compactMap { Int($0) }
+        guard parts.count >= 2 else {
             throw NSError(
                 domain: "ManagedMarkItDownRuntime",
-                code: -2,
-                userInfo: [NSLocalizedDescriptionKey: "未检测到 python3，无法安装 MarkItDown。"]
+                code: -4,
+                userInfo: [NSLocalizedDescriptionKey: "无法识别 Python 版本：\(output)"]
             )
         }
 
-        return URL(fileURLWithPath: whichResult)
+        return PythonVersion(major: parts[0], minor: parts[1])
     }
 
     private static func runCommand(
@@ -229,5 +349,17 @@ actor ManagedMarkItDownRuntime {
         }
 
         return output
+    }
+}
+
+private struct PythonVersion: Equatable, Sendable {
+    let major: Int
+    let minor: Int
+
+    nonisolated func isAtLeast(_ minimum: PythonVersion) -> Bool {
+        if major != minimum.major {
+            return major > minimum.major
+        }
+        return minor >= minimum.minor
     }
 }
