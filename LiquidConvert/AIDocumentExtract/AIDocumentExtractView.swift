@@ -1,0 +1,751 @@
+import AppKit
+import Combine
+import SwiftUI
+import UniformTypeIdentifiers
+
+struct AIDocumentExtractItem: Identifiable, Hashable {
+    let id = UUID()
+    let source: AIDocumentSource
+    let createdAt = Date()
+
+    var title: String {
+        source.displayName
+    }
+
+    var subtitle: String {
+        source.detailText
+    }
+}
+
+@MainActor
+final class AIDocumentExtractViewModel: ObservableObject {
+    @Published var items: [AIDocumentExtractItem] = []
+    @Published var selectedItemID: UUID?
+    @Published var markdownResults: [UUID: String] = [:]
+    @Published var itemStatuses: [UUID: String] = [:]
+    @Published var itemErrors: [UUID: String] = [:]
+    @Published var runtimeStatus = "尚未准备运行环境"
+    @Published var draftLink = ""
+    @Published var isImporting = false
+    @Published var isPreparingRuntime = false
+    @Published var isExtracting = false
+    @Published var globalMessage = "支持 PDF、Word、Excel、PPT、HTML、文本文件与网页链接，公众号文章会走专用提取。"
+
+    private let runtime = ManagedMarkItDownRuntime.shared
+
+    var selectedItem: AIDocumentExtractItem? {
+        guard let selectedItemID else { return nil }
+        return items.first(where: { $0.id == selectedItemID })
+    }
+
+    var selectedMarkdown: String {
+        guard let selectedItem else { return "" }
+        return markdownResults[selectedItem.id] ?? ""
+    }
+
+    var selectedStatus: String {
+        guard let selectedItem else { return "等待中" }
+        return itemStatuses[selectedItem.id] ?? "等待中"
+    }
+
+    var selectedPreviewHTML: String {
+        guard !selectedMarkdown.isEmpty else { return "" }
+        return EtherpadExporter.buildRenderedHTML(from: selectedMarkdown)
+    }
+
+    var selectedError: String? {
+        guard let selectedItem else { return nil }
+        return itemErrors[selectedItem.id]
+    }
+
+    var canExtractSelection: Bool {
+        selectedItem != nil && !isExtracting
+    }
+
+    var canExportSelection: Bool {
+        selectedItem != nil && !selectedMarkdown.isEmpty
+    }
+
+    func prepareRuntimeIfNeeded() {
+        guard !isPreparingRuntime else { return }
+        isPreparingRuntime = true
+        runtimeStatus = "正在准备 AI 文档提取运行环境…"
+
+        Task {
+            defer { isPreparingRuntime = false }
+            do {
+                _ = try await runtime.prepare()
+                runtimeStatus = "运行环境已就绪"
+            } catch {
+                runtimeStatus = "环境准备失败"
+                globalMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func addFiles(_ urls: [URL]) {
+        let newItems = urls.map { AIDocumentExtractItem(source: .file($0)) }
+        append(items: newItems)
+    }
+
+    func addDraftLink() {
+        _ = enqueueLink(draftLink)
+    }
+
+    func addDraftLinkAndExtract() {
+        guard !isExtracting else {
+            globalMessage = "当前正在提取，请等待本次任务完成。"
+            return
+        }
+        guard let item = enqueueLink(draftLink) else { return }
+        extract(items: [item])
+    }
+
+    func addClipboardLink() {
+        guard !isExtracting else {
+            globalMessage = "当前正在提取，请等待本次任务完成。"
+            return
+        }
+        let pasteboard = NSPasteboard.general
+        let raw = pasteboard.string(forType: .string) ?? ""
+        _ = enqueueLink(raw, invalidMessage: "剪贴板里没有可识别的网页链接。")
+    }
+
+    func addClipboardLinkAndExtract() {
+        guard !isExtracting else {
+            globalMessage = "当前正在提取，请等待本次任务完成。"
+            return
+        }
+        let pasteboard = NSPasteboard.general
+        let raw = pasteboard.string(forType: .string) ?? ""
+        guard let item = enqueueLink(raw, invalidMessage: "剪贴板里没有可识别的网页链接。") else { return }
+        extract(items: [item])
+    }
+
+    func openSelectedOriginal() {
+        guard let selectedItem else { return }
+        switch selectedItem.source {
+        case .file(let url):
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        case .link(let url):
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func removeItems(at offsets: IndexSet) {
+        let removedIDs = offsets.map { items[$0].id }
+        items.remove(atOffsets: offsets)
+        removedIDs.forEach {
+            markdownResults.removeValue(forKey: $0)
+            itemStatuses.removeValue(forKey: $0)
+            itemErrors.removeValue(forKey: $0)
+        }
+
+        if let selectedItemID, !items.contains(where: { $0.id == selectedItemID }) {
+            self.selectedItemID = items.first?.id
+        }
+    }
+
+    func clearAll() {
+        items.removeAll()
+        markdownResults.removeAll()
+        itemStatuses.removeAll()
+        itemErrors.removeAll()
+        selectedItemID = nil
+    }
+
+    func extractSelected() {
+        guard let selectedItem else { return }
+        extract(items: [selectedItem])
+    }
+
+    func extractAll() {
+        extract(items: items)
+    }
+
+    func copySelectedMarkdown() {
+        guard !selectedMarkdown.isEmpty else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(selectedMarkdown, forType: .string)
+        globalMessage = "Markdown 已复制到剪贴板。"
+    }
+
+    func exportSelectedMarkdown() {
+        guard let selectedItem, !selectedMarkdown.isEmpty else { return }
+
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = suggestedMarkdownFilename(for: selectedItem)
+        panel.title = "导出 Markdown"
+        panel.prompt = "导出"
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            try selectedMarkdown.write(to: url, atomically: true, encoding: .utf8)
+            globalMessage = "Markdown 已导出到 \(url.lastPathComponent)。"
+        } catch {
+            globalMessage = "导出失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func enqueueLink(_ rawValue: String, invalidMessage: String = "请输入有效的 http/https 链接。") -> AIDocumentExtractItem? {
+        guard let normalized = normalizeLink(rawValue) else {
+            globalMessage = invalidMessage
+            return nil
+        }
+
+        draftLink = normalized.absoluteString
+        return append(items: [AIDocumentExtractItem(source: .link(normalized))]).first
+    }
+
+    @discardableResult
+    private func append(items newItems: [AIDocumentExtractItem]) -> [AIDocumentExtractItem] {
+        guard !newItems.isEmpty else { return [] }
+
+        let existingSignatures = Set(items.map(\.subtitle))
+        let filtered = newItems.filter { !existingSignatures.contains($0.subtitle) }
+        guard !filtered.isEmpty else {
+            globalMessage = "这些项目已经在队列中了。"
+            return []
+        }
+
+        items.append(contentsOf: filtered)
+        filtered.forEach { itemStatuses[$0.id] = "等待提取" }
+        selectedItemID = filtered.last?.id
+        globalMessage = "已加入 \(filtered.count) 个待提取项目。"
+        return filtered
+    }
+
+    private func normalizeLink(_ rawValue: String) -> URL? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let candidate: String
+        if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") {
+            candidate = trimmed
+        } else if trimmed.lowercased().hasPrefix("www.") {
+            candidate = "https://\(trimmed)"
+        } else {
+            return nil
+        }
+
+        guard let url = URL(string: candidate),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https"
+        else {
+            return nil
+        }
+
+        return url
+    }
+
+    private func extract(items extractionItems: [AIDocumentExtractItem]) {
+        guard !extractionItems.isEmpty else { return }
+        guard !isExtracting else { return }
+
+        isExtracting = true
+        globalMessage = "正在提取 Markdown，请稍候…"
+
+        Task {
+            defer { isExtracting = false }
+
+            for item in extractionItems {
+                selectedItemID = item.id
+                itemStatuses[item.id] = "准备运行环境…"
+                runtimeStatus = "正在准备 AI 文档提取运行环境…"
+
+                do {
+                    itemStatuses[item.id] = "正在提取内容…"
+                    runtimeStatus = "正在调用 MarkItDown 提取内容…"
+                    let result = try await runtime.extract(source: item.source)
+
+                    markdownResults[item.id] = result.markdown
+                    itemErrors[item.id] = nil
+                    itemStatuses[item.id] = "提取完成"
+                    runtimeStatus = "运行环境已就绪"
+                    globalMessage = "已完成 \(item.title) 的 Markdown 提取。"
+                } catch {
+                    itemStatuses[item.id] = "提取失败"
+                    let message = error.localizedDescription
+                    itemErrors[item.id] = message
+                    globalMessage = message
+                }
+            }
+        }
+    }
+
+    private func suggestedMarkdownFilename(for item: AIDocumentExtractItem) -> String {
+        let rawName: String
+        switch item.source {
+        case .file(let url):
+            rawName = url.deletingPathExtension().lastPathComponent
+        case .link(let url):
+            rawName = url.host ?? "WebPage"
+        }
+
+        let cleaned = rawName
+            .components(separatedBy: CharacterSet(charactersIn: "/:\\?%*|\"<>"))
+            .joined(separator: "_")
+
+        return cleaned.isEmpty ? "Extracted.md" : "\(cleaned).md"
+    }
+}
+
+struct AIDocumentExtractView: View {
+    @StateObject private var viewModel = AIDocumentExtractViewModel()
+    @State private var isDropTargeted = false
+    @State private var showQuickAddSheet = false
+    @State private var showResultSheet = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            let horizontalPadding: CGFloat = geometry.size.width < 900 ? 20 : 32
+            let topPadding: CGFloat = 0
+            let bottomPadding: CGFloat = 8
+            let verticalSpacing: CGFloat = 10
+            let cardHeight = max(300, geometry.size.height - 240)
+
+            VStack(spacing: verticalSpacing) {
+                headerSection
+                    .padding(.top, topPadding)
+
+                conversionCard(height: cardHeight)
+                    .frame(maxHeight: .infinity)
+
+                footerHint
+            }
+            .frame(
+                width: geometry.size.width - (horizontalPadding * 2),
+                height: geometry.size.height - bottomPadding,
+                alignment: .top
+            )
+            .padding(.horizontal, horizontalPadding)
+            .padding(.bottom, bottomPadding)
+            .background(pageBackgroundColor)
+        }
+        .fileImporter(
+            isPresented: $viewModel.isImporting,
+            allowedContentTypes: [.data, .pdf, .plainText, .html],
+            allowsMultipleSelection: true
+        ) { result in
+            guard case .success(let urls) = result else { return }
+            viewModel.addFiles(urls)
+            viewModel.extractAll()
+        }
+        .sheet(isPresented: $showQuickAddSheet) {
+            quickAddSheet
+        }
+        .sheet(isPresented: $showResultSheet) {
+            resultSheet
+        }
+        .onChange(of: viewModel.selectedStatus) { _, newValue in
+            guard newValue == "提取完成" || newValue == "提取失败" else { return }
+            showResultSheet = true
+        }
+        .task {
+            viewModel.prepareRuntimeIfNeeded()
+        }
+    }
+
+    private var headerSection: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.12))
+                    .frame(width: 80, height: 80)
+                    .blur(radius: 10)
+
+                Image(systemName: "doc.viewfinder.fill")
+                    .font(.system(size: 44, weight: .thin))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.blue, .cyan],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .symbolEffect(.breathe, options: .repeating, isActive: viewModel.isExtracting)
+            }
+
+            VStack(spacing: 6) {
+                Text("AI 文档提取")
+                    .font(.title2.weight(.bold))
+
+                Text("点击读取 clipboard，或直接拖入支持的文件格式开始提取。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                runtimeStatusPill
+
+                Text(viewModel.globalMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private func conversionCard(height: CGFloat) -> some View {
+        VStack(spacing: 20) {
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(.secondary.opacity(0.05))
+                    .frame(width: 100, height: 100)
+
+                Image(systemName: currentHeroIcon)
+                    .font(.system(size: 48, weight: .ultraLight))
+                    .foregroundStyle(currentHeroTint)
+                    .symbolEffect(.pulse, options: .repeating, isActive: viewModel.isExtracting)
+            }
+
+            VStack(spacing: 8) {
+                Text(primaryActionTitle)
+                    .font(.headline)
+
+                Text(primaryActionSubtitle)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+
+            HStack(spacing: 10) {
+                shortcutBadge
+
+                if !viewModel.isExtracting {
+                    Label("支持拖入 PDF / Office / HTML / 文本", systemImage: "tray.and.arrow.down")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(.primary.opacity(0.05)))
+                }
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: height)
+        .contentShape(Rectangle())
+        .background {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(panelBackgroundColor)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(isDropTargeted ? Color.accentColor.opacity(0.45) : cardBorderColor, style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 1, dash: isDropTargeted ? [10, 8] : []))
+                }
+        }
+        .shadow(color: cardShadowColor, radius: 18, x: 0, y: 8)
+        .allowsHitTesting(!viewModel.isExtracting)
+        .onTapGesture {
+            guard !viewModel.isExtracting else { return }
+            viewModel.addClipboardLinkAndExtract()
+        }
+        .keyboardShortcut("v", modifiers: .command)
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
+    }
+
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        Task {
+            var urls: [URL] = []
+            for provider in providers {
+                if let url = await provider.loadSafeURL() {
+                    urls.append(url)
+                }
+            }
+            await MainActor.run {
+                viewModel.addFiles(urls)
+                viewModel.extractAll()
+            }
+        }
+        return true
+    }
+
+    private var quickAddSheet: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("手动添加")
+                        .font(.title3.weight(.bold))
+                    Text("粘贴网页链接后直接开始提取，或选择本地文件立即转换。")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("网页链接")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                TextField("粘贴 http/https 链接", text: $viewModel.draftLink)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack(spacing: 10) {
+                Button("开始提取") {
+                    viewModel.addDraftLinkAndExtract()
+                    showQuickAddSheet = false
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.isExtracting)
+
+                Button("选择文件") {
+                    showQuickAddSheet = false
+                    viewModel.isImporting = true
+                }
+                .buttonStyle(.bordered)
+                .disabled(viewModel.isExtracting)
+
+                Spacer()
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
+    }
+
+    private var runtimeStatusPill: some View {
+        Label(
+            viewModel.runtimeStatus,
+            systemImage: viewModel.isPreparingRuntime ? "gearshape.2.fill" : "checkmark.seal.fill"
+        )
+        .font(.system(size: 11, weight: .medium))
+        .foregroundStyle(viewModel.isPreparingRuntime ? .blue : .secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color(nsColor: .controlBackgroundColor), in: Capsule())
+    }
+
+    private var resultSheet: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(viewModel.selectedItem?.title ?? "提取结果")
+                        .font(.title3.weight(.bold))
+
+                    Text(viewModel.selectedStatus)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(viewModel.selectedStatus.contains("失败") ? .red : .secondary)
+
+                    if let selectedItem = viewModel.selectedItem {
+                        Text(selectedItem.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+
+                Spacer()
+
+                Button("完成") {
+                    showResultSheet = false
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(24)
+
+            Divider()
+
+            Group {
+                if !viewModel.selectedMarkdown.isEmpty {
+                    HTMLPreviewView(html: viewModel.selectedPreviewHTML)
+                        .background(Color(nsColor: .textBackgroundColor))
+                } else if let selectedError = viewModel.selectedError {
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.orange)
+                        Text("提取失败")
+                            .font(.headline)
+                        Text(selectedError)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 460)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(24)
+                    .background(panelBackgroundColor)
+                } else {
+                    ProgressView("正在准备结果…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(24)
+                }
+            }
+            .frame(minHeight: 420)
+
+            Divider()
+
+            HStack(spacing: 10) {
+                Button("复制 Markdown") {
+                    viewModel.copySelectedMarkdown()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!viewModel.canExportSelection)
+
+                Button("导出 .md") {
+                    viewModel.exportSelectedMarkdown()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.canExportSelection)
+
+                Button("打开原始链接 / 文件") {
+                    viewModel.openSelectedOriginal()
+                }
+                .buttonStyle(.bordered)
+                .disabled(viewModel.selectedItem == nil)
+
+                Spacer()
+            }
+            .padding(20)
+        }
+        .frame(width: 760, height: 620)
+    }
+
+    private var shortcutBadge: some View {
+        HStack(spacing: 0) {
+            Image(systemName: "command")
+            Text("V 快速粘贴")
+        }
+        .font(.system(size: 11, weight: .medium))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(.primary.opacity(0.05)))
+    }
+
+    private var currentHeroIcon: String {
+        if viewModel.isExtracting {
+            return "hourglass"
+        }
+        if viewModel.selectedStatus.contains("失败") {
+            return "exclamationmark.triangle"
+        }
+        return "doc.on.clipboard"
+    }
+
+    private var currentHeroTint: some ShapeStyle {
+        if viewModel.selectedStatus.contains("失败") {
+            return Color.orange
+        }
+        return Color.secondary
+    }
+
+    private var primaryActionTitle: String {
+        if viewModel.isExtracting {
+            return "正在提取内容"
+        }
+        return "点击读取剪贴板"
+    }
+
+    private var primaryActionSubtitle: String {
+        if viewModel.isExtracting {
+            return viewModel.globalMessage
+        }
+        return "自动解析剪贴板中的网页链接，拖入文件也会直接开始转换。"
+    }
+
+    private var footerHint: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "shield")
+            Text("提取过程在本地完成，结果会在二级结果窗口中查看。")
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(.tertiary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var pageBackgroundColor: Color {
+        Color.white
+    }
+
+    private var panelBackgroundColor: Color {
+        Color.white
+    }
+
+    private var cardBorderColor: Color {
+        Color.black.opacity(0.06)
+    }
+
+    private var cardShadowColor: Color {
+        Color.black.opacity(0.08)
+    }
+}
+
+private struct AIDocumentQueueRow: View {
+    let item: AIDocumentExtractItem
+    let status: String
+    let isSelected: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: iconName)
+                    .font(.system(size: 16))
+                    .foregroundStyle(.blue)
+                    .frame(width: 22)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                    Text(item.subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+            }
+
+            HStack {
+                Text(status)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(statusColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(statusColor.opacity(0.12))
+                    .clipShape(Capsule())
+                Spacer()
+            }
+        }
+        .padding(14)
+        .contentShape(Rectangle())
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.10) : .white)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(isSelected ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.05), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(isSelected ? 0.10 : 0.05), radius: isSelected ? 12 : 8, x: 0, y: 4)
+    }
+
+    private var iconName: String {
+        switch item.source {
+        case .file:
+            return "doc.text"
+        case .link(let url) where (url.host ?? "").contains("mp.weixin.qq.com"):
+            return "text.page.badge.magnifyingglass"
+        case .link:
+            return "globe"
+        }
+    }
+
+    private var statusColor: Color {
+        if status.contains("失败") {
+            return .red
+        }
+        if status.contains("完成") || status.contains("就绪") {
+            return .green
+        }
+        return .orange
+    }
+}

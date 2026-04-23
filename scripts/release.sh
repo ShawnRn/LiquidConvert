@@ -97,40 +97,6 @@ echo "发布日期: $PUB_DATE"
 # 5. 更新 appcast.xml
 echo "正在更新 appcast.xml..."
 
-# 检查 appcast.xml 是否已存在，如果不存在则创建头
-if [ ! -f "$APPCAST_FILE" ]; then
-    cat <<EOF > "$APPCAST_FILE"
-<?xml version="1.0" encoding="utf-8"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
-    <channel>
-        <title>LiquidConvert</title>
-    </channel>
-</rss>
-EOF
-fi
-
-# 移除同一 build 的旧条目，保证 workflow 重跑时 appcast 保持幂等
-python3 - "$APPCAST_FILE" "$SPARKLE_VERSION" <<'PY'
-import re
-import sys
-from pathlib import Path
-
-appcast_path = Path(sys.argv[1])
-sparkle_version = sys.argv[2]
-content = appcast_path.read_text(encoding="utf-8")
-pattern = re.compile(
-    r'\s*<item>\s*'
-    r'<title>.*?</title>\s*'
-    r'<pubDate>.*?</pubDate>\s*'
-    rf'<sparkle:version>{re.escape(sparkle_version)}</sparkle:version>.*?'
-    r'</item>\s*',
-    re.S,
-)
-updated = re.sub(pattern, '', content)
-if updated != content:
-    appcast_path.write_text(updated, encoding="utf-8")
-PY
-
 # 生成新的 ITEM XML (多 enclosure)
 ITEM_XML="        <item>
             <title>$VERSION</title>
@@ -142,17 +108,40 @@ ITEM_XML="        <item>
             <enclosure url=\"$URL_X86_64\" length=\"$SIZE_X86_64\" type=\"application/octet-stream\" sparkle:os=\"macos\" sparkle:nativeArchitecture=\"x86_64\" sparkle:edSignature=\"$SIG_X86_64\"/>
         </item>"
 
-# 将新 ITEM 插入到 <channel> 标签之后 (简单的插入逻辑，适用于简单维护)
-# 使用临时文件处理
-TEMP_FILE=$(mktemp)
-# 读取文件直到 <channel>
-sed '/<channel>/q' "$APPCAST_FILE" > "$TEMP_FILE"
-# 写入新 Item
-echo "$ITEM_XML" >> "$TEMP_FILE"
-# 读取 <channel> 之后的内容 (不包含 <channel>)
-sed -n '/<channel>/,$p' "$APPCAST_FILE" | tail -n +2 >> "$TEMP_FILE"
+# 重新构建 appcast，顺手修复历史上残留的结构问题，并保证同一 build 幂等
+python3 - "$APPCAST_FILE" "$SPARKLE_VERSION" "$ITEM_XML" <<'PY'
+import re
+import sys
+from pathlib import Path
 
-mv "$TEMP_FILE" "$APPCAST_FILE"
+appcast_path = Path(sys.argv[1])
+sparkle_version = sys.argv[2]
+item_xml = sys.argv[3]
+
+if appcast_path.exists():
+    content = appcast_path.read_text(encoding="utf-8")
+else:
+    content = ""
+
+items = re.findall(r"<item>.*?</item>", content, re.S)
+items = [item for item in items if f"<sparkle:version>{sparkle_version}</sparkle:version>" not in item]
+
+rebuilt = "\n".join(
+    [
+        '<?xml version="1.0" encoding="utf-8"?>',
+        '<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">',
+        "    <channel>",
+        "        <title>LiquidConvert</title>",
+        item_xml,
+        *["        " + item.replace("\n", "\n        ").strip() for item in items],
+        "    </channel>",
+        "</rss>",
+        "",
+    ]
+)
+
+appcast_path.write_text(rebuilt, encoding="utf-8")
+PY
 
 if command -v xmllint >/dev/null 2>&1; then
     xmllint --noout "$APPCAST_FILE"
