@@ -13,6 +13,13 @@
 3.  **Generate Appcast**: Local run of `release.sh`. This script must sign the bytes users actually download from GitHub Release, not blindly trust the local DMG.
 4.  **Final Push**: Commit and push `appcast.xml` ONLY after step 2 is confirmed.
 
+## CI And Manual Hotfix Concurrency Rule
+- Release workflows triggered by tag pushes run from a detached tag checkout. They must not directly commit and push `appcast.xml` from that detached HEAD to `main`.
+- Before committing generated `appcast.xml`, CI must snapshot the generated file, fetch the latest default branch, switch to `origin/main`, then re-apply the snapshot and commit from there.
+- If the generated `appcast.xml` SHA already matches `origin/main:appcast.xml`, the workflow must exit successfully without committing.
+- If a push is rejected because `main` advanced during a manual hotfix, CI must fetch `origin/main` again and re-compare. If the remote appcast now matches the generated snapshot, treat it as success, not a release failure.
+- Manual hotfixes that replace an existing tag/release should either let CI own the appcast push or perform the final appcast push locally, but not rely on both writers racing. When both paths run, the SHA comparison rule above is mandatory.
+
 ## Sparkle Verification Rule
 - Before `appcast.xml` is committed, re-download every release asset from GitHub and use those remote bytes to compute `sparkle:edSignature` and `length`.
 - If the downloaded asset hash differs from the local DMG hash, treat the remote asset as the source of truth for Sparkle metadata, otherwise the app will show “更新未正确签名”.

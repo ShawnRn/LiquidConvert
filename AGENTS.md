@@ -78,3 +78,6 @@
 - 如果需要“替换最新更新”，优先保持同一版本号并原地替换对应 Release / appcast，不要额外新开一个用户可见版本去掩盖签名事故。
 - **禁止**带着脏工作区直接发版。发版前必须先确认 `git status --short` 为空，或者至少明确只有本次要发布的改动被 stage/commit。
 - 新模块上线前，必须检查入口链路已经入库：`TabIdentifier` / `ContentView` 侧边栏入口 / 主视图路由 / 依赖声明（如 License）要一起进入同一个 release 提交；不能只把实现文件留在仓库里却漏掉入口注册。
+- **禁止**从 tag 工作流的 detached HEAD 直接硬推 `appcast.xml` 到 `main`。GitHub Actions 或手动热修提交 appcast 前，必须先 `fetch origin main`，基于最新 `origin/main` 重新应用生成好的 appcast，再提交推送。
+- 如果手动热修和 Release Actions 同时更新 `appcast.xml`，应比较生成结果与远端 `appcast.xml` 的 SHA；内容已经一致时必须视为成功并跳过提交，不能因为 `fetch first` / non-fast-forward 把发布流程标红。
+- 替换最新 release 时，推荐顺序是：推代码与版本 build -> 重建/替换 GitHub Release 资产 -> 运行 `release.sh` 用远端资产生成 appcast -> 单独提交 appcast。不要让 CI 和本地同时各自生成不同时间戳的 appcast 后抢推 `main`。
