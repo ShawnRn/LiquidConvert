@@ -52,6 +52,29 @@ struct Lark2PadFunctionView: View {
         }) {
             Lark2PadLoginView(coordinator: coordinator)
         }
+        .alert(
+            "检测到超限图片",
+            isPresented: Binding(
+                get: { coordinator.oversizedImagePrompt != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        coordinator.dismissOversizedImagePrompt()
+                    }
+                }
+            ),
+            presenting: coordinator.oversizedImagePrompt
+        ) { _ in
+            Button("自动压缩并继续") {
+                Task {
+                    await coordinator.retryPendingConversionWithCompression()
+                }
+            }
+            Button("取消", role: .cancel) {
+                coordinator.dismissOversizedImagePrompt()
+            }
+        } message: { prompt in
+            Text(prompt.message)
+        }
         .fileExporter(
             isPresented: $showExporter,
             document: Lark2PadExportDocument(html: coordinator.etherpadHTML),

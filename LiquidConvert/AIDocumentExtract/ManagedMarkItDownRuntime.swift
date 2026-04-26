@@ -24,8 +24,15 @@ enum AIDocumentSource: Hashable {
 }
 
 struct AIDocumentExtractionResult {
-    let markdown: String
-    let source: AIDocumentSource
+    nonisolated let markdown: String
+    nonisolated let source: AIDocumentSource
+    nonisolated let suggestedTitle: String?
+
+    nonisolated init(markdown: String, source: AIDocumentSource, suggestedTitle: String? = nil) {
+        self.markdown = markdown
+        self.source = source
+        self.suggestedTitle = suggestedTitle
+    }
 }
 
 actor ManagedMarkItDownRuntime {
@@ -107,7 +114,7 @@ actor ManagedMarkItDownRuntime {
         if case .link(let url) = source {
             if WeChatArticleExtractor.canHandle(url) {
                 progress?("正在提取公众号正文…")
-                return try await WeChatArticleExtractor.extract(from: url)
+                return try await WeChatArticleExtractor.extract(from: url, progress: progress)
             }
 
             if GenericWebArticleExtractor.canHandle(url), GenericWebArticleExtractor.shouldPreferOverMarkItDown(url) {

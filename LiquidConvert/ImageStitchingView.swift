@@ -441,7 +441,7 @@ struct ImageStitchingView: View, Sendable {
             settingsPanel
                 //.zIndex(2) // Removed zIndex
         } // End of HSplitView
-        .fileImporter(isPresented: $isImporting, allowedContentTypes: [.image], allowsMultipleSelection: true) { result in
+        .fileImporter(isPresented: $isImporting, allowedContentTypes: [.image, .svgImage], allowsMultipleSelection: true) { result in
             if let urls = try? result.get() { handleImportedURLs(urls) }
         }
     } // End of body property
@@ -618,7 +618,7 @@ struct ImageStitchingView: View, Sendable {
     }
     
     func handleImportedURLs(_ urls: [URL]) {
-        let allowed = ["jpg", "jpeg", "png", "heic", "heif", "webp", "tiff", "tif", "bmp", "gif", "avif"]
+        let allowed = ImageSourceSupport.supportedImageExtensions
         let filtered = urls.filter { allowed.contains($0.pathExtension.lowercased()) }
         withAnimation {
             for url in filtered {

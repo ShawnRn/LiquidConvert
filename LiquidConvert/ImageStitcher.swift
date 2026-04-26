@@ -94,8 +94,10 @@ struct ImageStitcher {
         // 1. 读取所有图片 (后台)
         var validImages: [(image: CGImage, width: Int, height: Int)] = []
         for url in imageURLs {
-            if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-               let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) {
+            if let rasterImage = try? ImageSourceSupport.loadRasterImage(
+                from: url, errorDomain: "ImageStitcher")
+            {
+                let cgImage = rasterImage.image
                 validImages.append((cgImage, cgImage.width, cgImage.height))
             }
         }

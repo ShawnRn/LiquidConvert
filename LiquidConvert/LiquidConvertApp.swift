@@ -249,10 +249,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         print("🟢 [处理] 开始处理 \(urls.count) 个文件")
 
         // 过滤出图片文件
-        let imageExtensions = [
-            "jpg", "jpeg", "png", "heic", "webp", "tiff", "tif", "bmp", "gif", "raw", "cr2", "nef",
-            "arw", "avif",
-        ]
+        let imageExtensions = ImageSourceSupport.supportedImageExtensions
         let imageFiles = urls.filter { url in
             imageExtensions.contains(url.pathExtension.lowercased())
         }

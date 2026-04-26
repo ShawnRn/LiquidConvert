@@ -267,7 +267,7 @@ struct ImageCompressionView: View, Sendable {
         }
         .fileImporter(
             isPresented: $isImporting,
-            allowedContentTypes: [.image],
+            allowedContentTypes: [.image, .svgImage],
             allowsMultipleSelection: true
         ) { result in
             switch result {
@@ -380,7 +380,7 @@ struct ImageCompressionView: View, Sendable {
                     Text("拖拽图片到这里")
                         .font(.headline)
                         .foregroundStyle(.primary)
-                    Text("支持主流图片格式的压缩与转换")
+                    Text("支持主流图片与 SVG 的压缩转换")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -400,7 +400,7 @@ struct ImageCompressionView: View, Sendable {
     @MainActor
     func handleImportedURLs(_ urls: [URL]) {
         Task {
-            let imageExtensions = ["jpg", "jpeg", "png", "heic", "heif", "webp", "tiff", "tif", "bmp", "gif", "avif"]
+            let imageExtensions = ImageSourceSupport.supportedImageExtensions
             let finalFiles = await Task.detached(priority: .userInitiated) {
                 FileScanner.scan(urls: urls, allowedExtensions: imageExtensions)
             }.value

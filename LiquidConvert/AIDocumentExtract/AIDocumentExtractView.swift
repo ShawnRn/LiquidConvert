@@ -22,6 +22,7 @@ final class AIDocumentExtractViewModel: ObservableObject {
     @Published var items: [AIDocumentExtractItem] = []
     @Published var selectedItemID: UUID?
     @Published var markdownResults: [UUID: String] = [:]
+    @Published var suggestedTitles: [UUID: String] = [:]
     @Published var itemStatuses: [UUID: String] = [:]
     @Published var itemErrors: [UUID: String] = [:]
     @Published var runtimeStatus = "尚未准备运行环境"
@@ -137,6 +138,7 @@ final class AIDocumentExtractViewModel: ObservableObject {
         items.remove(atOffsets: offsets)
         removedIDs.forEach {
             markdownResults.removeValue(forKey: $0)
+            suggestedTitles.removeValue(forKey: $0)
             itemStatuses.removeValue(forKey: $0)
             itemErrors.removeValue(forKey: $0)
         }
@@ -149,6 +151,7 @@ final class AIDocumentExtractViewModel: ObservableObject {
     func clearAll() {
         items.removeAll()
         markdownResults.removeAll()
+        suggestedTitles.removeAll()
         itemStatuses.removeAll()
         itemErrors.removeAll()
         selectedItemID = nil
@@ -260,9 +263,13 @@ final class AIDocumentExtractViewModel: ObservableObject {
                 do {
                     itemStatuses[item.id] = "正在提取内容…"
                     runtimeStatus = "正在调用 MarkItDown 提取内容…"
-                    let result = try await runtime.extract(source: item.source)
+                    let progressSink = AIDocumentExtractionProgressSink(viewModel: self, itemID: item.id)
+                    let result = try await runtime.extract(source: item.source) { message in
+                        progressSink.update(message)
+                    }
 
                     markdownResults[item.id] = result.markdown
+                    suggestedTitles[item.id] = result.suggestedTitle
                     itemErrors[item.id] = nil
                     itemStatuses[item.id] = "提取完成"
                     runtimeStatus = "运行环境已就绪"
@@ -283,18 +290,50 @@ final class AIDocumentExtractViewModel: ObservableObject {
         case .file(let url):
             rawName = url.deletingPathExtension().lastPathComponent
         case .link(let url):
-            rawName = url.host ?? "WebPage"
+            rawName = suggestedTitles[item.id]
+                ?? markdownTitle(from: markdownResults[item.id] ?? "")
+                ?? url.host
+                ?? "WebPage"
         }
 
         let cleaned = rawName
-            .components(separatedBy: CharacterSet(charactersIn: "/:\\?%*|\"<>"))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .components(separatedBy: CharacterSet(charactersIn: "/:\\?%*|\"<>\n\r\t"))
             .joined(separator: "_")
 
         return cleaned.isEmpty ? "Extracted.md" : "\(cleaned).md"
     }
+
+    private func markdownTitle(from markdown: String) -> String? {
+        markdown
+            .components(separatedBy: .newlines)
+            .first { $0.hasPrefix("# ") }
+            .map { String($0.dropFirst(2)).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+    }
+}
+
+private final class AIDocumentExtractionProgressSink: @unchecked Sendable {
+    nonisolated(unsafe) private weak var viewModel: AIDocumentExtractViewModel?
+    nonisolated private let itemID: UUID
+
+    @MainActor
+    init(viewModel: AIDocumentExtractViewModel, itemID: UUID) {
+        self.viewModel = viewModel
+        self.itemID = itemID
+    }
+
+    nonisolated func update(_ message: String) {
+        Task { @MainActor [weak viewModel, itemID] in
+            viewModel?.itemStatuses[itemID] = message
+            viewModel?.runtimeStatus = message
+            viewModel?.globalMessage = message
+        }
+    }
 }
 
 struct AIDocumentExtractView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var viewModel = AIDocumentExtractViewModel()
     @State private var isDropTargeted = false
     @State private var showQuickAddSheet = false
@@ -662,23 +701,27 @@ struct AIDocumentExtractView: View {
     }
 
     private var pageBackgroundColor: Color {
-        Color.white
+        Color(nsColor: .windowBackgroundColor)
     }
 
     private var panelBackgroundColor: Color {
-        Color.white
+        colorScheme == .dark
+        ? Color(nsColor: .controlBackgroundColor).opacity(0.72)
+        : Color(nsColor: .textBackgroundColor)
     }
 
     private var cardBorderColor: Color {
-        Color.black.opacity(0.06)
+        Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.06)
     }
 
     private var cardShadowColor: Color {
-        Color.black.opacity(0.08)
+        Color.black.opacity(colorScheme == .dark ? 0.32 : 0.08)
     }
 }
 
 private struct AIDocumentQueueRow: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let item: AIDocumentExtractItem
     let status: String
     let isSelected: Bool
@@ -719,13 +762,13 @@ private struct AIDocumentQueueRow: View {
         .contentShape(Rectangle())
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.10) : .white)
+                .fill(rowBackgroundColor)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(isSelected ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.05), lineWidth: 1)
+                .strokeBorder(rowBorderColor, lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(isSelected ? 0.10 : 0.05), radius: isSelected ? 12 : 8, x: 0, y: 4)
+        .shadow(color: rowShadowColor, radius: isSelected ? 12 : 8, x: 0, y: 4)
     }
 
     private var iconName: String {
@@ -747,5 +790,25 @@ private struct AIDocumentQueueRow: View {
             return .green
         }
         return .orange
+    }
+
+    private var rowBackgroundColor: Color {
+        if isSelected {
+            return Color.accentColor.opacity(colorScheme == .dark ? 0.18 : 0.10)
+        }
+        return colorScheme == .dark
+        ? Color(nsColor: .controlBackgroundColor).opacity(0.66)
+        : Color(nsColor: .textBackgroundColor)
+    }
+
+    private var rowBorderColor: Color {
+        if isSelected {
+            return Color.accentColor.opacity(colorScheme == .dark ? 0.36 : 0.22)
+        }
+        return Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.05)
+    }
+
+    private var rowShadowColor: Color {
+        Color.black.opacity(colorScheme == .dark ? (isSelected ? 0.28 : 0.18) : (isSelected ? 0.10 : 0.05))
     }
 }

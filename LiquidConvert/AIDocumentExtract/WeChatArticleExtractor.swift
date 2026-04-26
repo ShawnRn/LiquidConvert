@@ -1,5 +1,7 @@
 import AppKit
 import Foundation
+import ImageIO
+import Vision
 import WebKit
 
 enum WeChatArticleExtractor {
@@ -17,16 +19,31 @@ enum WeChatArticleExtractor {
         (url.host ?? "").contains("mp.weixin.qq.com")
     }
 
-    static func extract(from url: URL) async throws -> AIDocumentExtractionResult {
-        let article: ParsedArticle
+    static func extract(
+        from url: URL,
+        progress: (@Sendable (String) -> Void)? = nil
+    ) async throws -> AIDocumentExtractionResult {
+        var article: ParsedArticle
         do {
-            article = try await WeChatRenderedPageReader().extract(url: url)
-        } catch {
             let html = try await fetchHTML(from: url)
             article = try parseArticle(from: html, url: url)
+        } catch {
+            do {
+                article = try await WeChatRenderedPageReader().extract(url: url)
+            } catch {
+                if let cliResult = try await extractWithLocalWXCLI(url: url) {
+                    return cliResult
+                }
+                throw error
+            }
         }
 
-        return AIDocumentExtractionResult(markdown: article.markdownDocument, source: .link(url))
+        article = try await appendOCRIfNeeded(to: article, progress: progress)
+        return AIDocumentExtractionResult(
+            markdown: article.markdownDocument,
+            source: .link(url),
+            suggestedTitle: article.title
+        )
     }
 
     fileprivate static func cleanRenderedText(_ text: String) -> String {
@@ -66,6 +83,146 @@ enum WeChatArticleExtractor {
         }
 
         return html
+    }
+
+    private static func extractWithLocalWXCLI(url: URL) async throws -> AIDocumentExtractionResult? {
+        guard let wxPath = localWXCLIPath() else { return nil }
+
+        let markdown = try await Task.detached(priority: .userInitiated) {
+            let outputURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("liquidconvert-wx-\(UUID().uuidString).md")
+            defer {
+                try? FileManager.default.removeItem(at: outputURL)
+            }
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: wxPath)
+            process.arguments = [
+                url.absoluteString,
+                "--force-ocr",
+                "--max-ocr-images",
+                "0",
+                "--no-save",
+            ]
+
+            let errorOutput = Pipe()
+            FileManager.default.createFile(atPath: outputURL.path, contents: nil)
+            let outputHandle = try FileHandle(forWritingTo: outputURL)
+            defer {
+                try? outputHandle.close()
+            }
+            process.standardOutput = outputHandle
+            process.standardError = errorOutput
+
+            try process.run()
+            process.waitUntilExit()
+
+            let errorData = errorOutput.fileHandleForReading.readDataToEndOfFile()
+            let data = (try? Data(contentsOf: outputURL)) ?? Data()
+            let text = String(data: data, encoding: .utf8) ?? ""
+
+            guard process.terminationStatus == 0, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                let errorText = String(data: errorData, encoding: .utf8) ?? "本地 wx CLI 提取失败。"
+                throw NSError(
+                    domain: "WeChatArticleExtractor",
+                    code: Int(process.terminationStatus),
+                    userInfo: [NSLocalizedDescriptionKey: errorText.trimmingCharacters(in: .whitespacesAndNewlines)]
+                )
+            }
+
+            return text
+        }.value
+
+        let normalizedMarkdown = normalizeWXCLIMarkdown(markdown)
+        return AIDocumentExtractionResult(
+            markdown: normalizedMarkdown,
+            source: .link(url),
+            suggestedTitle: markdownTitle(from: normalizedMarkdown)
+        )
+    }
+
+    private static func localWXCLIPath() -> String? {
+        let candidates = [
+            "/opt/homebrew/bin/wx",
+            "/usr/local/bin/wx",
+            "\(NSHomeDirectory())/.local/bin/wx",
+            "\(NSHomeDirectory())/Documents/ifanr/wechat-article-reader-skill/bin/wx",
+        ]
+
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    private static func normalizeWXCLIMarkdown(_ markdown: String) -> String {
+        let lines = markdown
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+        var output: [String] = []
+        var pendingImageIndex: Int?
+
+        for line in lines {
+            guard !line.isEmpty else {
+                if output.last?.isEmpty == false {
+                    output.append("")
+                }
+                continue
+            }
+
+            if let imageIndex = imageCommentIndex(from: line) {
+                pendingImageIndex = imageIndex
+                continue
+            }
+
+            if let imageIndex = pendingImageIndex {
+                let quotedLines = line
+                    .components(separatedBy: .newlines)
+                    .map { normalizeLine($0) }
+                    .filter { !$0.isEmpty }
+                    .map { "> \($0)" }
+                    .joined(separator: "\n>\n")
+
+                if !quotedLines.isEmpty {
+                    if output.last?.isEmpty == false {
+                        output.append("")
+                    }
+                    output.append("> 图片 \(imageIndex) OCR：")
+                    output.append(">")
+                    output.append(quotedLines)
+                    output.append("")
+                }
+                pendingImageIndex = nil
+                continue
+            }
+
+            output.append(line)
+        }
+
+        return output
+            .joined(separator: "\n")
+            .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func imageCommentIndex(from line: String) -> Int? {
+        guard let regex = try? NSRegularExpression(pattern: #"<!--\s*image\s+([0-9]+)\s*-->"#, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(line.startIndex..<line.endIndex, in: line)
+        guard let match = regex.firstMatch(in: line, options: [], range: range),
+              match.numberOfRanges > 1,
+              let capture = Range(match.range(at: 1), in: line)
+        else {
+            return nil
+        }
+        return Int(line[capture])
+    }
+
+    private static func markdownTitle(from markdown: String) -> String? {
+        markdown
+            .components(separatedBy: .newlines)
+            .first { $0.hasPrefix("# ") }
+            .map { String($0.dropFirst(2)).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
     }
 
     private static func parseArticle(from page: String, url: URL) throws -> ParsedArticle {
@@ -109,6 +266,7 @@ enum WeChatArticleExtractor {
 
         let bodyHTML = extractBodyHTML(from: page)
         let markdownBody = cleanMarkdownBody(from: bodyHTML)
+        let imageURLs = extractImageURLs(from: bodyHTML)
 
         guard !markdownBody.isEmpty else {
             throw NSError(
@@ -123,16 +281,190 @@ enum WeChatArticleExtractor {
             title: title,
             author: author.isEmpty ? "未知作者" : author,
             summary: summary,
-            bodyMarkdown: markdownBody
+            bodyMarkdown: markdownBody,
+            imageURLs: imageURLs
+        )
+    }
+
+    private static func appendOCRIfNeeded(
+        to article: ParsedArticle,
+        progress: (@Sendable (String) -> Void)?
+    ) async throws -> ParsedArticle {
+        guard !article.imageURLs.isEmpty else { return article }
+
+        let targetImages = article.imageURLs
+        progress?("公众号文章默认 OCR，正在处理 \(targetImages.count) 张图片…")
+
+        var chunks: [String] = []
+        for (index, imageURL) in targetImages.enumerated() {
+            progress?("正在 OCR 图片 \(index + 1)/\(targetImages.count)…")
+            do {
+                let text = try await recognizeText(in: imageURL)
+                if !text.isEmpty {
+                    chunks.append(formatOCRBlock(text, imageIndex: index + 1))
+                }
+            } catch {
+                print("[WeChat OCR] image \(index + 1) failed: \(error.localizedDescription)")
+            }
+        }
+
+        guard !chunks.isEmpty else { return article }
+
+        var body = article.bodyMarkdown
+        body += "\n\n---\n\n## 图片 OCR 提取\n\n"
+        body += chunks.joined(separator: "\n\n")
+
+        return ParsedArticle(
+            url: article.url,
+            title: article.title,
+            author: article.author,
+            summary: article.summary,
+            bodyMarkdown: body,
+            imageURLs: article.imageURLs
+        )
+    }
+
+    private static func formatOCRBlock(_ text: String, imageIndex: Int) -> String {
+        let quotedLines = text
+            .components(separatedBy: .newlines)
+            .map { normalizeLine($0) }
+            .filter { !$0.isEmpty }
+            .map { "> \($0)" }
+            .joined(separator: "\n>\n")
+
+        guard !quotedLines.isEmpty else { return "" }
+        return "> 图片 \(imageIndex) OCR：\n>\n\(quotedLines)"
+    }
+
+    fileprivate static func extractImageURLs(from html: String) -> [URL] {
+        let patterns = [
+            #"<img[^>]+data-src=["']([^"']+)["']"#,
+            #"<img[^>]+data-croporisrc=["']([^"']+)["']"#,
+            #"<img[^>]+src=["'](https?://mmbiz\.qpic\.cn/[^"']+)["']"#,
+            #"<img[^>]+src=["'](//mmbiz\.qpic\.cn/[^"']+)["']"#,
+        ]
+
+        var urls: [URL] = []
+        var seen = Set<String>()
+
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+                continue
+            }
+            let range = NSRange(html.startIndex..<html.endIndex, in: html)
+            for match in regex.matches(in: html, options: [], range: range) where match.numberOfRanges > 1 {
+                guard let capture = Range(match.range(at: 1), in: html) else { continue }
+                var raw = htmlDecoded(String(html[capture]))
+                    .replacingOccurrences(of: "&amp;", with: "&")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if raw.hasPrefix("//") {
+                    raw = "https:\(raw)"
+                }
+                guard let url = URL(string: raw),
+                      (url.host ?? "").contains("mmbiz"),
+                      !seen.contains(url.absoluteString)
+                else { continue }
+                seen.insert(url.absoluteString)
+                urls.append(url)
+            }
+        }
+
+        return urls
+    }
+
+    private static func recognizeText(in url: URL) async throws -> String {
+        let data = try await downloadImageData(from: url)
+        return try await Task.detached(priority: .userInitiated) {
+            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil)
+            else {
+                throw NSError(
+                    domain: "WeChatArticleExtractor",
+                    code: -30,
+                    userInfo: [NSLocalizedDescriptionKey: "无法读取公众号图片。"]
+                )
+            }
+
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = true
+            request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"]
+
+            try VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([request])
+            let lines = (request.results ?? [])
+                .compactMap { $0.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+
+            return lines.joined(separator: "\n")
+        }.value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func downloadImageData(from url: URL) async throws -> Data {
+        let candidates: [URL]
+        if var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           components.query != nil
+        {
+            components.query = nil
+            if let cleanURL = components.url, cleanURL != url {
+                candidates = [url, cleanURL]
+            } else {
+                candidates = [url]
+            }
+        } else {
+            candidates = [url]
+        }
+
+        var lastError: Error?
+        for candidate in candidates {
+            for attempt in 0..<3 {
+                do {
+                    var request = URLRequest(url: candidate)
+                    request.setValue(mobileUserAgent, forHTTPHeaderField: "User-Agent")
+                    request.setValue("https://mp.weixin.qq.com/", forHTTPHeaderField: "Referer")
+                    request.timeoutInterval = 30
+
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                        throw NSError(
+                            domain: "WeChatArticleExtractor",
+                            code: http.statusCode,
+                            userInfo: [NSLocalizedDescriptionKey: "公众号图片下载失败（HTTP \(http.statusCode)）。"]
+                        )
+                    }
+                    return data
+                } catch {
+                    lastError = error
+                    try await Task.sleep(for: .milliseconds(500 * (attempt + 1)))
+                }
+            }
+        }
+
+        throw lastError ?? NSError(
+            domain: "WeChatArticleExtractor",
+            code: -31,
+            userInfo: [NSLocalizedDescriptionKey: "公众号图片下载失败。"]
         )
     }
 
     private static func extractBodyHTML(from page: String) -> String {
-        guard let contentRange = page.range(of: #"id="js_content""#, options: .regularExpression) else {
-            return ""
+        let primaryPattern = #"<div[^>]+id=["']js_content["'][^>]*>(.*?)</div>\s*<script"#
+        if let regex = try? NSRegularExpression(pattern: primaryPattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) {
+            let range = NSRange(page.startIndex..<page.endIndex, in: page)
+            if let match = regex.firstMatch(in: page, options: [], range: range),
+               match.numberOfRanges > 1,
+               let capture = Range(match.range(at: 1), in: page)
+            {
+                return String(page[capture])
+            }
         }
 
-        var body = String(page[contentRange.lowerBound...])
+        let contentRange =
+            page.range(of: #"<div[^>]+id=["']js_content["'][^>]*>"#, options: .regularExpression)
+            ?? page.range(of: #"id=["']js_content["']"#, options: .regularExpression)
+
+        guard let contentRange else { return "" }
+
+        var body = String(page[contentRange.upperBound...])
         let endMarkers = [
             #"<section[^>]*class="wx_profile_card_inner""#,
             #"<div[^>]*id="js_tags""#,
@@ -164,8 +496,9 @@ enum WeChatArticleExtractor {
             (#"</p>|</section>|</article>|</li>|</h[1-6]>|</blockquote>|</div>"#, "\n"),
             (#"<li[^>]*>"#, "- "),
             (#"<h[1-6][^>]*>"#, "\n"),
-            (#"<img[^>]*data-src="([^"]+)"[^>]*>"#, "\n![image]($1)\n"),
-            (#"<img[^>]*src="([^"]+)"[^>]*>"#, "\n![image]($1)\n"),
+            (#"<img[^>]*data-src="([^"]+)"[^>]*>"#, "\n\n![image]($1)\n\n"),
+            (#"<img[^>]*data-croporisrc="([^"]+)"[^>]*>"#, "\n\n![image]($1)\n\n"),
+            (#"<img[^>]*src="([^"]+)"[^>]*>"#, "\n\n![image]($1)\n\n"),
             (#"<[^>]+>"#, ""),
         ]
 
@@ -296,6 +629,7 @@ enum WeChatArticleExtractor {
         let author: String
         let summary: String
         let bodyMarkdown: String
+        let imageURLs: [URL]
 
         var markdownDocument: String {
             var sections = ["# \(title)"]
@@ -343,7 +677,8 @@ private final class WeChatRenderedPageReader: NSObject, WKNavigationDelegate {
                         title: snapshot.bestTitle,
                         author: snapshot.author.isEmpty ? "未知作者" : snapshot.author,
                         summary: snapshot.summary,
-                        bodyMarkdown: cleanedHTML
+                        bodyMarkdown: cleanedHTML,
+                        imageURLs: WeChatArticleExtractor.extractImageURLs(from: snapshot.contentHTML)
                     )
                 }
             }
@@ -356,7 +691,8 @@ private final class WeChatRenderedPageReader: NSObject, WKNavigationDelegate {
                         title: snapshot.bestTitle,
                         author: snapshot.author.isEmpty ? "未知作者" : snapshot.author,
                         summary: snapshot.summary,
-                        bodyMarkdown: cleanedText
+                        bodyMarkdown: cleanedText,
+                        imageURLs: WeChatArticleExtractor.extractImageURLs(from: snapshot.contentHTML)
                     )
                 }
             }
@@ -381,7 +717,8 @@ private final class WeChatRenderedPageReader: NSObject, WKNavigationDelegate {
                 title: fallbackSnapshot.bestTitle,
                 author: fallbackSnapshot.author.isEmpty ? "未知作者" : fallbackSnapshot.author,
                 summary: fallbackSnapshot.summary,
-                bodyMarkdown: cleanedText.isEmpty ? fallbackSnapshot.contentText : cleanedText
+                bodyMarkdown: cleanedText.isEmpty ? fallbackSnapshot.contentText : cleanedText,
+                imageURLs: WeChatArticleExtractor.extractImageURLs(from: fallbackSnapshot.contentHTML)
             )
         }
 

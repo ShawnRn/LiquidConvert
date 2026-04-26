@@ -45,16 +45,9 @@ struct ImageConverter {
         inputURL: URL, to format: TargetFormat, quality: Double = 0.9,
         autoCompressTo5MB: Bool = false
     ) throws -> URL {
-        guard let source = CGImageSourceCreateWithURL(inputURL as CFURL, nil) else {
-            throw NSError(
-                domain: "ImageConverter", code: -1, userInfo: [NSLocalizedDescriptionKey: "无法读取源图片"]
-            )
-        }
-
-        // 1. 获取源图片的所有元数据 (EXIF, GPS, TIFF 等)
-        let srcProperties =
-            CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
-        var destProperties = srcProperties
+        let rasterImage = try ImageSourceSupport.loadRasterImage(
+            from: inputURL, errorDomain: "ImageConverter")
+        var destProperties = rasterImage.properties
 
         // 2. 构造干净的输出路径 (移除时间戳)
         let originalFolder = inputURL.deletingLastPathComponent()
@@ -69,11 +62,10 @@ struct ImageConverter {
         if autoCompressTo5MB {
             let targetSizeBytes: Int64 = 5 * 1024 * 1024  // 5MB
             let finalQuality = try findOptimalQuality(
-                source: source,
+                rasterImage: rasterImage,
                 format: format,
-                outputURL: outputURL,
                 targetSize: targetSizeBytes,
-                properties: srcProperties
+                properties: rasterImage.properties
             )
             destProperties[kCGImageDestinationLossyCompressionQuality] = finalQuality
         } else {
@@ -91,7 +83,7 @@ struct ImageConverter {
         }
 
         // 4. 执行写入，带上元数据
-        CGImageDestinationAddImageFromSource(destination, source, 0, destProperties as CFDictionary)
+        addImage(rasterImage, to: destination, properties: destProperties)
 
         if CGImageDestinationFinalize(destination) {
             return outputURL
@@ -113,9 +105,8 @@ struct ImageConverter {
 
     /// 使用二分查找算法找到满足目标文件大小的最佳质量参数
     private static func findOptimalQuality(
-        source: CGImageSource,
+        rasterImage: ImageSourceSupport.RasterImage,
         format: TargetFormat,
-        outputURL: URL,
         targetSize: Int64,
         properties: [CFString: Any]
     ) throws -> Double {
@@ -153,8 +144,7 @@ struct ImageConverter {
                     userInfo: [NSLocalizedDescriptionKey: "无法创建临时文件"])
             }
 
-            CGImageDestinationAddImageFromSource(
-                destination, source, 0, testProperties as CFDictionary)
+            addImage(rasterImage, to: destination, properties: testProperties)
 
             guard CGImageDestinationFinalize(destination) else {
                 throw NSError(
@@ -196,6 +186,18 @@ struct ImageConverter {
         return bestQuality
     }
 
+    private static func addImage(
+        _ rasterImage: ImageSourceSupport.RasterImage,
+        to destination: CGImageDestination,
+        properties: [CFString: Any]
+    ) {
+        if let source = rasterImage.source {
+            CGImageDestinationAddImageFromSource(destination, source, 0, properties as CFDictionary)
+        } else {
+            CGImageDestinationAddImage(destination, rasterImage.image, properties as CFDictionary)
+        }
+    }
+
     /// 辅助方法：生成不重复的文件路径
     /// 逻辑：如果 Target.jpg 存在，则尝试 Target 1.jpg, Target 2.jpg...
     private static func getUniqueFileURL(folder: URL, fileName: String, extension ext: String)
@@ -222,16 +224,9 @@ struct ImageConverter {
 
         for url in imageURLs {
             do {
-                // 读取源图片
-                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
-                    throw NSError(
-                        domain: "ImageConverter", code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "无法读取源图片"])
-                }
-
-                // 获取源图片的元数据
-                let srcProperties =
-                    CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
+                let rasterImage = try ImageSourceSupport.loadRasterImage(
+                    from: url, errorDomain: "ImageConverter")
+                let srcProperties = rasterImage.properties
 
                 let originalExtension = url.pathExtension.lowercased()
                 let isAlreadyJPG = (originalExtension == "jpg" || originalExtension == "jpeg")
@@ -269,9 +264,8 @@ struct ImageConverter {
                     // 文件 >=5MB，使用二分查找算法找到最佳压缩质量（≤5MB）
                     print("⚙️ 文件 ≥5MB (\(fileSize/1024)KB)，启动智能压缩")
                     finalQuality = try findOptimalQuality(
-                        source: source,
+                        rasterImage: rasterImage,
                         format: .jpeg,
-                        outputURL: outputURL,
                         targetSize: targetSizeBytes,
                         properties: srcProperties
                     )
@@ -290,9 +284,8 @@ struct ImageConverter {
                         userInfo: [NSLocalizedDescriptionKey: "无法创建输出文件"])
                 }
 
-                // 写入图片（直接从源添加，保持原始分辨率）
-                CGImageDestinationAddImageFromSource(
-                    destination, source, 0, destProperties as CFDictionary)
+                // 写入图片（普通位图直接从源添加，SVG 使用已栅格化图像）
+                addImage(rasterImage, to: destination, properties: destProperties)
 
                 guard CGImageDestinationFinalize(destination) else {
                     throw NSError(

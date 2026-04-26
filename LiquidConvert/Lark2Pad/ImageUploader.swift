@@ -1,10 +1,56 @@
 import Foundation
+import UniformTypeIdentifiers
 
 /// 处理飞书图片下载并自动上传到公司私有图床的工具类
 @MainActor
 final class ImageUploader {
+    struct OversizedImageSummary: Sendable, Equatable {
+        let sourceURL: String
+        let byteCount: Int
+        let uploadLimitBytes: Int
+    }
+
+    enum UploadBehavior: Sendable {
+        case direct
+        case askBeforeCompressing
+        case compressOversizedImages
+    }
+
+    enum UploadError: LocalizedError {
+        case oversizedImageRequiresCompression(OversizedImageSummary)
+        case automaticCompressionFailed(description: String)
+        case uploadRejected(statusCode: Int, description: String)
+        case invalidUploadResponse(description: String)
+
+        var errorDescription: String? {
+            switch self {
+            case .oversizedImageRequiresCompression(let summary):
+                return "检测到超限图片（\(Self.megabyteString(for: summary.byteCount) )），超过上传限制 \(Self.megabyteString(for: summary.uploadLimitBytes))。"
+            case .automaticCompressionFailed(let description):
+                return "自动压缩失败：\(description)"
+            case .uploadRejected(let statusCode, let description):
+                if statusCode == 413 {
+                    return "图片体积仍然超过服务端限制，请先压缩后再试。"
+                }
+                return "图床拒绝上传（HTTP \(statusCode)）：\(description)"
+            case .invalidUploadResponse(let description):
+                return "上传成功但服务端返回了无法识别的响应：\(description)"
+            }
+        }
+
+        private static func megabyteString(for bytes: Int) -> String {
+            String(format: "%.1f MB", Double(bytes) / 1_000_000)
+        }
+    }
+
+    private struct PreparedUploadPayload {
+        let data: Data
+        let filename: String
+        let mimeType: String
+    }
     
     // MARK: - 配置信息
+    private static let uploadLimitBytes = 4_800_000
     
     /// 共享的 URLSession，开启连接复用 (Keep-Alive)
     private static let session: URLSession = {
@@ -18,6 +64,7 @@ final class ImageUploader {
     /// 批量处理图片：下载飞书临时图片并上传至私有图床输出进度
     /// 回调参数：(当前索引, 当前文件进度0-1, 实时速度字符串)
     static func uploadAll(images: [(id: Int, url: String)], 
+                        behavior: UploadBehavior = .direct,
                         progress: ((Int, Double, String) -> Void)? = nil) async throws -> [(id: Int, base64: String)] {
         if images.isEmpty { return [] }
         
@@ -30,11 +77,10 @@ final class ImageUploader {
             
             print("[ImageUploader] 正在处理第 \(index + 1)/\(images.count) 张图片: \(item.id)")
             
-            if let newURL = try await uploadSingleImage(url: item.url, onProgress: { fileProgress, speed in
+            let newURL = try await uploadSingleImage(url: item.url, behavior: behavior, onProgress: { fileProgress, speed in
                 progress?(index + 1, fileProgress, speed)
-            }) {
-                results.append((id: item.id, base64: newURL))
-            }
+            })
+            results.append((id: item.id, base64: newURL))
             
             try? await Task.sleep(for: .milliseconds(300))
         }
@@ -45,8 +91,14 @@ final class ImageUploader {
     
     // MARK: - 私有方法
     
-    private static func uploadSingleImage(url: String, onProgress: @escaping (Double, String) -> Void) async throws -> String? {
-        guard let imageURL = URL(string: url) else { return nil }
+    private static func uploadSingleImage(
+        url: String,
+        behavior: UploadBehavior,
+        onProgress: @escaping (Double, String) -> Void
+    ) async throws -> String {
+        guard let imageURL = URL(string: url) else {
+            throw UploadError.invalidUploadResponse(description: "无效图片地址")
+        }
         
         do {
             // 1. 下载图片数据
@@ -54,21 +106,126 @@ final class ImageUploader {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard statusCode == 200 else { 
                 print("[ImageUploader] ❌ 下载失败: \(url), 状态码: \(statusCode)")
-                return nil 
+                throw UploadError.uploadRejected(statusCode: statusCode, description: "原图下载失败") 
             }
             
             let mimeType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? "image/png"
-            let ext = mimeType.contains("jpeg") ? "jpg" : (mimeType.contains("gif") ? "gif" : (mimeType.contains("webp") ? "webp" : "png"))
-            let finalFilename = "l2p_\(UUID().uuidString.prefix(8)).\(ext)"
+            let baseName = "l2p_\(UUID().uuidString.prefix(8))"
             
             print("[ImageUploader] 已下载数据 (\(data.count / 1024) KB), 准备上传...")
+
+            let payload = try preparePayload(
+                data: data,
+                sourceURL: imageURL,
+                behavior: behavior,
+                suggestedBaseName: baseName,
+                originalMimeType: mimeType
+            )
             
             // 2. 执行上传 (传入进度回调)
-            return try await performUpload(data: data, filename: finalFilename, mimeType: mimeType, onProgress: onProgress)
+            return try await performUpload(
+                data: payload.data,
+                filename: payload.filename,
+                mimeType: payload.mimeType,
+                onProgress: onProgress
+            )
         } catch {
             print("[ImageUploader] ❌ 图片下载/处理阶段失败: \(url), 错误: \(error.localizedDescription)")
             throw error
         }
+    }
+
+    private static func preparePayload(
+        data: Data,
+        sourceURL: URL,
+        behavior: UploadBehavior,
+        suggestedBaseName: String,
+        originalMimeType: String
+    ) throws -> PreparedUploadPayload {
+        guard data.count > uploadLimitBytes else {
+            return PreparedUploadPayload(
+                data: data,
+                filename: "\(suggestedBaseName).\(fileExtension(for: originalMimeType, sourceURL: sourceURL))",
+                mimeType: originalMimeType
+            )
+        }
+
+        let summary = OversizedImageSummary(
+            sourceURL: sourceURL.absoluteString,
+            byteCount: data.count,
+            uploadLimitBytes: uploadLimitBytes
+        )
+
+        switch behavior {
+        case .direct:
+            throw UploadError.uploadRejected(statusCode: 413, description: "原图超过 5 MB 上传限制")
+        case .askBeforeCompressing:
+            throw UploadError.oversizedImageRequiresCompression(summary)
+        case .compressOversizedImages:
+            return try compressPayload(
+                data: data,
+                sourceURL: sourceURL,
+                suggestedBaseName: suggestedBaseName,
+                originalMimeType: originalMimeType
+            )
+        }
+    }
+
+    private static func compressPayload(
+        data: Data,
+        sourceURL: URL,
+        suggestedBaseName: String,
+        originalMimeType: String
+    ) throws -> PreparedUploadPayload {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lark2pad-upload-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: tempDirectory)
+        }
+
+        let inputExtension = fileExtension(for: originalMimeType, sourceURL: sourceURL)
+        let inputURL = tempDirectory.appendingPathComponent("source.\(inputExtension)")
+        try data.write(to: inputURL, options: .atomic)
+
+        let options = ImageCompressor.CompressionOptions(
+            resizeMode: .none,
+            quality: 0.8,
+            deleteOriginal: false,
+            autoCompressTo5MB: true,
+            targetFormat: preferredOutputFormat(for: inputExtension),
+            gifFrameRate: nil,
+            gifColorDepth: nil,
+            gifCompressionPriority: nil
+        )
+
+        let compressedURL: URL
+        do {
+            compressedURL = try ImageCompressor.compress(inputURL: inputURL, options: options)
+        } catch {
+            throw UploadError.automaticCompressionFailed(description: error.localizedDescription)
+        }
+
+        let compressedData: Data
+        do {
+            compressedData = try Data(contentsOf: compressedURL)
+        } catch {
+            throw UploadError.automaticCompressionFailed(description: "无法读取压缩结果")
+        }
+
+        guard compressedData.count <= uploadLimitBytes else {
+            throw UploadError.automaticCompressionFailed(description: "自动压缩后仍超过 5 MB 限制")
+        }
+
+        let outputExtension = compressedURL.pathExtension.isEmpty ? inputExtension : compressedURL.pathExtension.lowercased()
+        let outputMimeType = mimeType(for: outputExtension, fallback: originalMimeType)
+        print("[ImageUploader] ✅ 自动压缩完成: \(data.count / 1024) KB → \(compressedData.count / 1024) KB")
+
+        return PreparedUploadPayload(
+            data: compressedData,
+            filename: "\(suggestedBaseName).\(outputExtension)",
+            mimeType: outputMimeType
+        )
     }
     
     /// 执行具体的 API 上传行为
@@ -76,12 +233,14 @@ final class ImageUploader {
                                      filename: String, 
                                      mimeType: String, 
                                      retryCount: Int = 0,
-                                     onProgress: @escaping (Double, String) -> Void) async throws -> String? {
+                                     onProgress: @escaping (Double, String) -> Void) async throws -> String {
         let maxRetries = 2
         let cookies = CookieManager.shared.cookieHeaderValue
         let padId = SecureRuntimeConfig.padIdentifier
         let endpoint = SecureRuntimeConfig.uploadEndpoint(for: padId)
-        guard let url = URL(string: endpoint) else { return nil }
+        guard let url = URL(string: endpoint) else {
+            throw UploadError.invalidUploadResponse(description: "上传地址无效")
+        }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -146,19 +305,79 @@ final class ImageUploader {
                     )
                     return finalUrl
                 }
-                return nil
+                throw UploadError.invalidUploadResponse(description: responseString)
             } else {
                 print("[ImageUploader] ❌ 服务器拒绝 (\(statusCode)): \(responseString)")
-                return nil
+                throw UploadError.uploadRejected(statusCode: statusCode, description: responseString)
             }
         } catch {
             print("[ImageUploader] ⚠️ 上传阶段网络错误 (重试 \(retryCount)/\(maxRetries)): \(error.localizedDescription)")
-            if retryCount < maxRetries {
+            if retryCount < maxRetries, shouldRetry(for: error) {
                 try? await Task.sleep(for: .seconds(Double(retryCount + 1) * 2.0))
                 return try await performUpload(data: data, filename: filename, mimeType: mimeType, retryCount: retryCount + 1, onProgress: onProgress)
             } else {
                 throw error
             }
+        }
+    }
+
+    private static func shouldRetry(for error: Error) -> Bool {
+        if let uploadError = error as? UploadError {
+            switch uploadError {
+            case .oversizedImageRequiresCompression, .automaticCompressionFailed, .uploadRejected, .invalidUploadResponse:
+                return false
+            }
+        }
+        return true
+    }
+
+    private static func preferredOutputFormat(for fileExtension: String) -> UTType {
+        switch fileExtension.lowercased() {
+        case "jpg", "jpeg":
+            return .jpeg
+        case "png":
+            return .png
+        case "gif":
+            return .gif
+        case "webp":
+            return .webP
+        case "heic", "heif":
+            return .heic
+        case "tif", "tiff":
+            return .tiff
+        default:
+            return .jpeg
+        }
+    }
+
+    private static func fileExtension(for mimeType: String, sourceURL: URL) -> String {
+        if mimeType.contains("jpeg") { return "jpg" }
+        if mimeType.contains("gif") { return "gif" }
+        if mimeType.contains("webp") { return "webp" }
+        if mimeType.contains("heic") || mimeType.contains("heif") { return "heic" }
+        if mimeType.contains("tiff") { return "tiff" }
+        if mimeType.contains("png") { return "png" }
+
+        let ext = sourceURL.pathExtension.lowercased()
+        return ext.isEmpty ? "png" : ext
+    }
+
+    private static func mimeType(for fileExtension: String, fallback: String) -> String {
+        switch fileExtension.lowercased() {
+        case "jpg", "jpeg":
+            return "image/jpeg"
+        case "gif":
+            return "image/gif"
+        case "webp":
+            return "image/webp"
+        case "heic", "heif":
+            return "image/heic"
+        case "tif", "tiff":
+            return "image/tiff"
+        case "png":
+            return "image/png"
+        default:
+            return fallback
         }
     }
 }

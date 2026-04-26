@@ -52,17 +52,10 @@ struct ImageCompressor {
                 deleteOriginal: options.deleteOriginal, options: options)
         }
 
-        guard let source = CGImageSourceCreateWithURL(inputURL as CFURL, nil) else {
-            throw NSError(
-                domain: "ImageCompressor", code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "无法读取源图片"])
-        }
-
-        guard let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-            throw NSError(
-                domain: "ImageCompressor", code: -2,
-                userInfo: [NSLocalizedDescriptionKey: "无法解码图片"])
-        }
+        let rasterImage = try ImageSourceSupport.loadRasterImage(
+            from: inputURL, errorDomain: "ImageCompressor")
+        let source = rasterImage.source
+        let cgImage = rasterImage.image
 
         // 智能自动压缩到 5MB（非 GIF 图片）
         if options.autoCompressTo5MB {
@@ -97,6 +90,7 @@ struct ImageCompressor {
                 inputURL: inputURL,
                 source: source,
                 cgImage: cgImage,
+                properties: rasterImage.properties,
                 format: targetFormat,
                 options: options
             )
@@ -122,9 +116,7 @@ struct ImageCompressor {
             from: inputURL, targetExtension: outputFormat.preferredFilenameExtension)
 
         // 4. 获取元数据
-        let srcProperties =
-            CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
-        var destProperties = srcProperties
+        var destProperties = rasterImage.properties
 
         // 5. 质量处理（手动模式）
         destProperties[kCGImageDestinationLossyCompressionQuality] = options.quality
@@ -163,8 +155,9 @@ struct ImageCompressor {
     /// 智能压缩普通图片到目标大小
     nonisolated private static func smartCompressImage(
         inputURL: URL,
-        source: CGImageSource,
+        source: CGImageSource?,
         cgImage: CGImage,
+        properties: [CFString: Any],
         format: UTType,
         options: CompressionOptions,
         progressCallback: ((String) -> Void)? = nil
@@ -187,6 +180,7 @@ struct ImageCompressor {
                 inputURL: inputURL,
                 source: source,
                 cgImage: cgImage,
+                properties: properties,
                 format: format,
                 targetSize: targetSizeBytes,
                 options: options,
@@ -198,6 +192,7 @@ struct ImageCompressor {
                 inputURL: inputURL,
                 source: source,
                 cgImage: cgImage,
+                properties: properties,
                 format: format,
                 targetSize: targetSizeBytes,
                 options: options,
@@ -209,8 +204,9 @@ struct ImageCompressor {
     /// 智能压缩有损格式（JPG/HEIC/WebP）
     nonisolated private static func smartCompressLossy(
         inputURL: URL,
-        source: CGImageSource,
+        source: CGImageSource?,
         cgImage: CGImage,
+        properties: [CFString: Any],
         format: UTType,
         targetSize: Int64,
         options: CompressionOptions,
@@ -266,7 +262,8 @@ struct ImageCompressor {
                 lastResizedImage = testImage
             }
             
-            let fileSize = try estimateFileSize(image: testImage, format: format, quality: step.quality, source: source)
+            let fileSize = try estimateFileSize(
+                image: testImage, format: format, quality: step.quality, properties: properties)
 
             let progressMsg = "🔍 自动策略: 分辨率×\(Int(step.scale*100))% (\(testImage.width)x\(testImage.height)), 质量\(Int(step.quality*100))% → \(String(format: "%.1f", Double(fileSize)/1_000_000))MB"
             progressCallback?(progressMsg)
@@ -278,10 +275,11 @@ struct ImageCompressor {
                     print("✨ 触发质量精修: 当前 \(Double(fileSize)/1_000_000)MB 较小，尝试调高画质...")
                     let refinedQualities = [min(0.95, step.quality + 0.1), min(0.98, step.quality + 0.15)]
                     for rQual in refinedQualities {
-                        let rSize = try estimateFileSize(image: testImage, format: format, quality: rQual, source: source)
+                        let rSize = try estimateFileSize(
+                            image: testImage, format: format, quality: rQual, properties: properties)
                         print("   ↳ 尝试质量 \(Int(rQual*100))% → \(String(format: "%.1f", Double(rSize)/1_000_000))MB")
                         if rSize <= targetSize && rSize > fileSize {
-                            return try finalizeCompression(image: testImage, inputURL: inputURL, format: format, quality: rQual, source: source, deleteOriginal: options.deleteOriginal)
+                            return try finalizeCompression(image: testImage, inputURL: inputURL, format: format, quality: rQual, properties: properties, deleteOriginal: options.deleteOriginal)
                         }
                     }
                 }
@@ -292,7 +290,7 @@ struct ImageCompressor {
                     inputURL: inputURL,
                     format: format,
                     quality: step.quality,
-                    source: source,
+                    properties: properties,
                     deleteOriginal: options.deleteOriginal
                 )
             }
@@ -307,7 +305,7 @@ struct ImageCompressor {
             inputURL: inputURL,
             format: format,
             quality: 0.3,
-            source: source,
+            properties: properties,
             deleteOriginal: options.deleteOriginal
         )
     }
@@ -315,8 +313,9 @@ struct ImageCompressor {
     /// 智能压缩无损格式（PNG/TIFF）
     nonisolated private static func smartCompressLossless(
         inputURL: URL,
-        source: CGImageSource,
+        source: CGImageSource?,
         cgImage: CGImage,
+        properties: [CFString: Any],
         format: UTType,
         targetSize: Int64,
         options: CompressionOptions,
@@ -335,7 +334,7 @@ struct ImageCompressor {
             let testImage =
                 scale == 1.0 ? cgImage : try resizeImage(cgImage: cgImage, resizeMode: resizeMode)
             let fileSize = try estimateFileSize(
-                image: testImage, format: format, quality: 1.0, source: source)
+                image: testImage, format: format, quality: 1.0, properties: properties)
 
             progressCallback?("🔍 测试: 分辨率×\(Int(scale*100))%")
             print("🔍 测试: 分辨率×\(Int(scale*100))% → \(fileSize/1024)KB")
@@ -347,7 +346,7 @@ struct ImageCompressor {
                     inputURL: inputURL,
                     format: format,
                     quality: 1.0,
-                    source: source,
+                    properties: properties,
                     deleteOriginal: options.deleteOriginal
                 )
             }
@@ -362,7 +361,7 @@ struct ImageCompressor {
             inputURL: inputURL,
             format: format,
             quality: 1.0,
-            source: source,
+            properties: properties,
             deleteOriginal: options.deleteOriginal
         )
     }
@@ -372,7 +371,7 @@ struct ImageCompressor {
         image: CGImage,
         format: UTType,
         quality: Double,
-        source: CGImageSource
+        properties sourceProperties: [CFString: Any]
     ) throws -> Int64 {
         // 使用 NSMutableData 将压缩过程完全限制在内存中
         let data = NSMutableData()
@@ -383,7 +382,7 @@ struct ImageCompressor {
             throw NSError(domain: "ImageCompressor", code: -30, userInfo: [NSLocalizedDescriptionKey: "无法创建内存压缩上下文"])
         }
 
-        var properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
+        var properties = sourceProperties
         properties[kCGImageDestinationLossyCompressionQuality] = quality
 
         CGImageDestinationAddImage(destination, image, properties as CFDictionary)
@@ -401,7 +400,7 @@ struct ImageCompressor {
         inputURL: URL,
         format: UTType,
         quality: Double,
-        source: CGImageSource,
+        properties sourceProperties: [CFString: Any],
         deleteOriginal: Bool
     ) throws -> URL {
         let outputURL = generateOutputURL(
@@ -416,8 +415,7 @@ struct ImageCompressor {
                 userInfo: [NSLocalizedDescriptionKey: "无法创建输出文件"])
         }
 
-        var properties =
-            CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
+        var properties = sourceProperties
         properties[kCGImageDestinationLossyCompressionQuality] = quality
 
         CGImageDestinationAddImage(destination, image, properties as CFDictionary)
