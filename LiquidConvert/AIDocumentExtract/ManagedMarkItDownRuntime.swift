@@ -111,6 +111,25 @@ actor ManagedMarkItDownRuntime {
         source: AIDocumentSource,
         progress: (@Sendable (String) -> Void)? = nil
     ) async throws -> AIDocumentExtractionResult {
+        if case .file(let url) = source, ImageOCRService.canHandleFile(url) {
+            progress?("正在 OCR 图片文本…")
+            let text = try await ImageOCRService.recognizeText(inFile: url)
+            let markdown = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !markdown.isEmpty else {
+                throw NSError(
+                    domain: "ManagedMarkItDownRuntime",
+                    code: -4,
+                    userInfo: [NSLocalizedDescriptionKey: "图片 OCR 结果为空，请更换更清晰的图片后重试。"]
+                )
+            }
+
+            return AIDocumentExtractionResult(
+                markdown: markdown,
+                source: source,
+                suggestedTitle: url.deletingPathExtension().lastPathComponent
+            )
+        }
+
         if case .link(let url) = source {
             if WeChatArticleExtractor.canHandle(url) {
                 progress?("正在提取公众号正文…")
@@ -138,7 +157,7 @@ actor ManagedMarkItDownRuntime {
             argument = url.absoluteString
         }
 
-        let markdown = try Self.runCommand(
+        var markdown = try Self.runCommand(
             executable: runtime.cliExecutable,
             args: [argument],
             currentDirectoryURL: runtime.rootDirectory
@@ -152,6 +171,12 @@ actor ManagedMarkItDownRuntime {
                 userInfo: [NSLocalizedDescriptionKey: "提取结果为空，请更换文件或链接后重试。"]
             )
         }
+
+        markdown = await MarkdownImageOCRIntegrator.insertOCRIfNeeded(
+            into: markdown,
+            source: source,
+            progress: progress
+        )
 
         return AIDocumentExtractionResult(markdown: markdown, source: source)
     }

@@ -39,6 +39,8 @@
 - 所有耗时操作（转换、提取帧、拼接）**必须**在 `Task.detached` 或 `Task` 异步上下文中执行，禁止阻塞 UI 线程。
 - 视频处理使用硬件加速编码，缩略图生成使用 `AVAssetImageGenerator`。
 - **AI 文档提取必须开箱即用**：`MarkItDown` 运行时不得依赖用户预装 Homebrew 或 Python 3.10+。如果系统 Python 不满足版本要求，App 必须自动准备受控的兼容 Python 运行时，再创建 venv 并安装固定版本的文档提取依赖。
+- **AI 文档 OCR 插入规则**：拖入图片文件时必须直接使用 Vision OCR 提取文字，禁止把图片交给 MarkItDown 后得到空结果；拖入 Word / PPT / Excel / PDF / HTML / 网页时，正文仍由 MarkItDown 或专用网页提取器负责，图片 OCR 结果必须插入到 Markdown 中对应图片位置附近，而不是统一追加到文末。
+- **AI 文档 OCR 排版规则**：OCR 输出需做基础段落归并，尽量合并同一视觉段落里被 Vision 拆碎的短行；列表、明显段落间距和标题结构应保留，避免把整张图粗暴拼成一行。
 
 ### 3. 构建验证
 - 进行任何功能迭代后，务必在终端执行 `./scripts/compile_and_run.sh` 验证应用启动和基本逻辑流。
@@ -63,18 +65,21 @@
 > **`appcast.xml` 必须是全流程中最后一个被 `push` 到远程仓库的文件。**
 
 1. **更新代码并推送 (不包含 `appcast.xml`)**：提交业务修改和版本号更新，推送到 GitHub。
-2. **创建 GitHub Release**：使用 GitHub CLI (`gh`) 自动化创建 Release 并上传产物（请一并上传 `arm64` 和 `x86_64` 两个安装包）。例如：
+2. **本地构建双架构 DMG**：运行 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/build.sh release`，确认 `releases/LiquidConvert_<version>_arm64.dmg` 与 `releases/LiquidConvert_<version>_x86_64.dmg` 都存在。
+3. **创建 GitHub Release**：使用 GitHub CLI (`gh`) 自动化创建 Release 并上传产物（请一并上传 `arm64` 和 `x86_64` 两个安装包）。例如：
    ```bash
    # 请将 $VERSION 替换为实际版本号，如 1.0.1
    gh release create "v$VERSION" "releases/LiquidConvert_${VERSION}_arm64.dmg" "releases/LiquidConvert_${VERSION}_x86_64.dmg" \
      --title "LiquidConvert $VERSION" \
      --notes "在此输入更新日志"
    ```
-3. **运行发布脚本更新本地 `appcast.xml`**：运行 `./scripts/release.sh <version>`。该脚本会优先下载 GitHub Release 上“实际可被用户下载到”的 DMG，并以远端资产为准生成 Sparkle 的 `length` 与 `edSignature`。
-4. **单独推送 `appcast.xml` (最后一步)**：推送该文件以激活 Sparkle 双架构自适应更新。
+4. **运行发布脚本更新本地 `appcast.xml`**：运行 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/release.sh <version>`。该脚本会优先下载 GitHub Release 上“实际可被用户下载到”的 DMG，并以远端资产为准生成 Sparkle 的 `length` 与 `edSignature`。
+5. **验证 Sparkle 更新源**：必须执行 `xmllint --noout appcast.xml`，并用 `curl -I` 校验 GitHub Release 的两个 DMG URL 以及 raw `appcast.xml` URL 可访问；提交后还要确认 raw `appcast.xml` 顶部版本、build、双架构 URL、length 和 edSignature 与远端资产一致。
+6. **单独推送 `appcast.xml` (最后一步)**：推送该文件以激活 Sparkle 双架构自适应更新。
 
 ### Sparkle 额外铁律
 - **禁止**在未创建 GitHub Release 的情况下先生成或推送 `appcast.xml`。
+- **默认禁止用 tag push 自动发布**：当前 `.github/workflows/release.yml` 仅保留 `workflow_dispatch`，新版本优先走本地受控发布流程，避免 GitHub Actions 与本地流程同时写 Release / appcast 造成失败或竞态。
 - **禁止**假设“本地 DMG == GitHub 上可下载到的 DMG”；必须以 `release.sh` 下载回来的远端资产为准生成 Sparkle 签名。
 - 如果需要“替换最新更新”，优先保持同一版本号并原地替换对应 Release / appcast，不要额外新开一个用户可见版本去掩盖签名事故。
 - 同一用户可见版本内替换有问题的更新时，必须提升 `CURRENT_PROJECT_VERSION`，否则已安装旧 build 的设备不会识别到修复包。

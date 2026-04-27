@@ -17,6 +17,20 @@ struct AIDocumentExtractItem: Identifiable, Hashable {
     }
 }
 
+private enum AIDocumentFileTypes {
+    static let doc = UTType(filenameExtension: "doc") ?? .data
+    static let docx = UTType(filenameExtension: "docx") ?? .data
+    static let ppt = UTType(filenameExtension: "ppt") ?? .data
+    static let pptx = UTType(filenameExtension: "pptx") ?? .data
+    static let xls = UTType(filenameExtension: "xls") ?? .data
+    static let xlsx = UTType(filenameExtension: "xlsx") ?? .data
+
+    static let importable: [UTType] = [
+        .data, .pdf, .plainText, .html, .image,
+        doc, docx, ppt, pptx, xls, xlsx,
+    ]
+}
+
 @MainActor
 final class AIDocumentExtractViewModel: ObservableObject {
     @Published var items: [AIDocumentExtractItem] = []
@@ -30,7 +44,7 @@ final class AIDocumentExtractViewModel: ObservableObject {
     @Published var isImporting = false
     @Published var isPreparingRuntime = false
     @Published var isExtracting = false
-    @Published var globalMessage = "支持 PDF、Word、Excel、PPT、HTML、文本文件与网页链接，公众号文章会走专用提取。"
+    @Published var globalMessage = "支持 PDF、Word、Excel、PPT、HTML、文本、图片与网页链接，图片会直接 OCR。"
 
     private let runtime = ManagedMarkItDownRuntime.shared
 
@@ -84,9 +98,10 @@ final class AIDocumentExtractViewModel: ObservableObject {
         }
     }
 
-    func addFiles(_ urls: [URL]) {
+    @discardableResult
+    func addFiles(_ urls: [URL]) -> [AIDocumentExtractItem] {
         let newItems = urls.map { AIDocumentExtractItem(source: .file($0)) }
-        append(items: newItems)
+        return append(items: newItems)
     }
 
     func addDraftLink() {
@@ -245,7 +260,7 @@ final class AIDocumentExtractViewModel: ObservableObject {
         return url
     }
 
-    private func extract(items extractionItems: [AIDocumentExtractItem]) {
+    func extract(items extractionItems: [AIDocumentExtractItem]) {
         guard !extractionItems.isEmpty else { return }
         guard !isExtracting else { return }
 
@@ -367,12 +382,13 @@ struct AIDocumentExtractView: View {
         }
         .fileImporter(
             isPresented: $viewModel.isImporting,
-            allowedContentTypes: [.data, .pdf, .plainText, .html],
+            allowedContentTypes: AIDocumentFileTypes.importable,
             allowsMultipleSelection: true
         ) { result in
             guard case .success(let urls) = result else { return }
-            viewModel.addFiles(urls)
-            viewModel.extractAll()
+            let newItems = viewModel.addFiles(urls)
+            guard !newItems.isEmpty else { return }
+            viewModel.extract(items: newItems)
         }
         .sheet(isPresented: $showQuickAddSheet) {
             quickAddSheet
@@ -487,7 +503,7 @@ struct AIDocumentExtractView: View {
             viewModel.addClipboardLinkAndExtract()
         }
         .keyboardShortcut("v", modifiers: .command)
-        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
+        .onDrop(of: AIDocumentFileTypes.importable + [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
@@ -499,8 +515,13 @@ struct AIDocumentExtractView: View {
                 }
             }
             await MainActor.run {
-                viewModel.addFiles(urls)
-                viewModel.extractAll()
+                guard !urls.isEmpty else {
+                    viewModel.globalMessage = "未能读取拖入文件，请确认拖入的是本地 PDF / Office / HTML / 文本 / 图片文件。"
+                    return
+                }
+                let newItems = viewModel.addFiles(urls)
+                guard !newItems.isEmpty else { return }
+                viewModel.extract(items: newItems)
             }
         }
         return true

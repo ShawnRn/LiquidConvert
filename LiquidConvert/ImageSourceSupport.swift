@@ -15,7 +15,7 @@ extension UTType {
 }
 
 struct ImageSourceSupport {
-    static let supportedImageExtensions: [String] = [
+    nonisolated static let supportedImageExtensions: [String] = [
         "jpg", "jpeg", "png", "heic", "heif", "webp", "tiff", "tif", "bmp", "gif", "raw", "cr2",
         "nef", "arw", "avif", "svg",
     ]

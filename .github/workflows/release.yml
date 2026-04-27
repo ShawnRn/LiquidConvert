@@ -1,9 +1,6 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       version:
@@ -76,9 +73,7 @@ jobs:
           PROJECT_VERSION=$(echo "$SETTINGS" | awk '/ MARKETING_VERSION = / {print $3; exit}')
           PROJECT_BUILD=$(echo "$SETTINGS" | awk '/ CURRENT_PROJECT_VERSION = / {print $3; exit}')
 
-          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          elif [[ -n "${{ inputs.version }}" ]]; then
+          if [[ -n "${{ inputs.version }}" ]]; then
             VERSION="${{ inputs.version }}"
           else
             VERSION="$PROJECT_VERSION"
@@ -198,6 +193,7 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git restore -- appcast.xml
           git switch -C "release-appcast-${GITHUB_RUN_ID}" "origin/${DEFAULT_BRANCH}"
           cp "$RUNNER_TEMP/appcast.xml" appcast.xml
 

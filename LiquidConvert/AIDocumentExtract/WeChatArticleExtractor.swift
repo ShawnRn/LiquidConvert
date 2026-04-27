@@ -1,7 +1,5 @@
 import AppKit
 import Foundation
-import ImageIO
-import Vision
 import WebKit
 
 enum WeChatArticleExtractor {
@@ -38,9 +36,13 @@ enum WeChatArticleExtractor {
             }
         }
 
-        article = try await appendOCRIfNeeded(to: article, progress: progress)
+        let markdown = await MarkdownImageOCRIntegrator.insertOCRIfNeeded(
+            into: article.markdownDocument,
+            source: .link(url),
+            progress: progress
+        )
         return AIDocumentExtractionResult(
-            markdown: article.markdownDocument,
+            markdown: markdown,
             source: .link(url),
             suggestedTitle: article.title
         )
@@ -286,56 +288,6 @@ enum WeChatArticleExtractor {
         )
     }
 
-    private static func appendOCRIfNeeded(
-        to article: ParsedArticle,
-        progress: (@Sendable (String) -> Void)?
-    ) async throws -> ParsedArticle {
-        guard !article.imageURLs.isEmpty else { return article }
-
-        let targetImages = article.imageURLs
-        progress?("公众号文章默认 OCR，正在处理 \(targetImages.count) 张图片…")
-
-        var chunks: [String] = []
-        for (index, imageURL) in targetImages.enumerated() {
-            progress?("正在 OCR 图片 \(index + 1)/\(targetImages.count)…")
-            do {
-                let text = try await recognizeText(in: imageURL)
-                if !text.isEmpty {
-                    chunks.append(formatOCRBlock(text, imageIndex: index + 1))
-                }
-            } catch {
-                print("[WeChat OCR] image \(index + 1) failed: \(error.localizedDescription)")
-            }
-        }
-
-        guard !chunks.isEmpty else { return article }
-
-        var body = article.bodyMarkdown
-        body += "\n\n---\n\n## 图片 OCR 提取\n\n"
-        body += chunks.joined(separator: "\n\n")
-
-        return ParsedArticle(
-            url: article.url,
-            title: article.title,
-            author: article.author,
-            summary: article.summary,
-            bodyMarkdown: body,
-            imageURLs: article.imageURLs
-        )
-    }
-
-    private static func formatOCRBlock(_ text: String, imageIndex: Int) -> String {
-        let quotedLines = text
-            .components(separatedBy: .newlines)
-            .map { normalizeLine($0) }
-            .filter { !$0.isEmpty }
-            .map { "> \($0)" }
-            .joined(separator: "\n>\n")
-
-        guard !quotedLines.isEmpty else { return "" }
-        return "> 图片 \(imageIndex) OCR：\n>\n\(quotedLines)"
-    }
-
     fileprivate static func extractImageURLs(from html: String) -> [URL] {
         let patterns = [
             #"<img[^>]+data-src=["']([^"']+)["']"#,
@@ -370,80 +322,6 @@ enum WeChatArticleExtractor {
         }
 
         return urls
-    }
-
-    private static func recognizeText(in url: URL) async throws -> String {
-        let data = try await downloadImageData(from: url)
-        return try await Task.detached(priority: .userInitiated) {
-            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                  let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil)
-            else {
-                throw NSError(
-                    domain: "WeChatArticleExtractor",
-                    code: -30,
-                    userInfo: [NSLocalizedDescriptionKey: "无法读取公众号图片。"]
-                )
-            }
-
-            let request = VNRecognizeTextRequest()
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
-            request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"]
-
-            try VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([request])
-            let lines = (request.results ?? [])
-                .compactMap { $0.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-
-            return lines.joined(separator: "\n")
-        }.value.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private static func downloadImageData(from url: URL) async throws -> Data {
-        let candidates: [URL]
-        if var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-           components.query != nil
-        {
-            components.query = nil
-            if let cleanURL = components.url, cleanURL != url {
-                candidates = [url, cleanURL]
-            } else {
-                candidates = [url]
-            }
-        } else {
-            candidates = [url]
-        }
-
-        var lastError: Error?
-        for candidate in candidates {
-            for attempt in 0..<3 {
-                do {
-                    var request = URLRequest(url: candidate)
-                    request.setValue(mobileUserAgent, forHTTPHeaderField: "User-Agent")
-                    request.setValue("https://mp.weixin.qq.com/", forHTTPHeaderField: "Referer")
-                    request.timeoutInterval = 30
-
-                    let (data, response) = try await URLSession.shared.data(for: request)
-                    if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                        throw NSError(
-                            domain: "WeChatArticleExtractor",
-                            code: http.statusCode,
-                            userInfo: [NSLocalizedDescriptionKey: "公众号图片下载失败（HTTP \(http.statusCode)）。"]
-                        )
-                    }
-                    return data
-                } catch {
-                    lastError = error
-                    try await Task.sleep(for: .milliseconds(500 * (attempt + 1)))
-                }
-            }
-        }
-
-        throw lastError ?? NSError(
-            domain: "WeChatArticleExtractor",
-            code: -31,
-            userInfo: [NSLocalizedDescriptionKey: "公众号图片下载失败。"]
-        )
     }
 
     private static func extractBodyHTML(from page: String) -> String {

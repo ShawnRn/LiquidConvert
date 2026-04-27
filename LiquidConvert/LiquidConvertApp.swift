@@ -137,6 +137,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         UNUserNotificationCenter.current().delegate = self
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard didFinishLaunching, !shouldHideWindow else { return }
+        reopenMainWindowIfNeeded(reason: "App 激活")
+    }
+
     // 🔥 关键：让 App 在前台也能显示通知
     func userNotificationCenter(
         _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
@@ -158,15 +163,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             return true
         }
 
-        if let window = sender.windows.first {
+        if let window = sender.windows.first(where: { $0.canBecomeMain }) {
+            if window.isMiniaturized {
+                window.deminiaturize(nil)
+            }
             window.makeKeyAndOrderFront(nil)
             sender.activate(ignoringOtherApps: true)
             print("🪟 恢复已有主窗口")
             return false
         }
 
-        print("🪟 允许系统重新创建主窗口")
-        return true
+        sender.activate(ignoringOtherApps: true)
+        reopenMainWindowIfNeeded(reason: "Dock 重新打开")
+        return false
+    }
+
+    private func reopenMainWindowIfNeeded(reason: String) {
+        let hasMainWindow = NSApp.windows.contains { window in
+            window.canBecomeMain && window.isVisible && !window.isMiniaturized
+        }
+        guard !hasMainWindow else { return }
+
+        let didRequestWindow = NSApp.sendAction(#selector(NSResponder.newWindowForTab(_:)), to: nil, from: nil)
+        print(didRequestWindow ? "🪟 \(reason)：已请求新主窗口" : "⚠️ \(reason)：无法请求新主窗口")
     }
 
     // MARK: - Dock 拖拽防抖处理

@@ -23,15 +23,7 @@ description: 自动化提取归档、打 DMG 包、生成 Sparkle 双架构签�
 ./scripts/build.sh release
 ```
 
-### 第三步：写入签名与发布描述
-接着调用发布脚本对两份 DMG 进行 EdDSA 提取并通过正则替换自动组合好针对多架构的 Sparkle 发布 `<enclosure>` 节点。
-*(⚠️ 执行前请把 `<YOUR_NEW_VERSION>` 替换为您正在发布的新版本。如 1.0.0)*
-
-```bash
-./scripts/release.sh <YOUR_NEW_VERSION>
-```
-
-### 第四步：推送文件至 GitHub Release
+### 第三步：推送文件至 GitHub Release
 发布您的二进制安装产物。
 *(⚠️ 同样需要在执行本命令内指明真实版本号)*
 
@@ -42,13 +34,31 @@ gh release create "v$VERSION" "releases/LiquidConvert_${VERSION}_arm64.dmg" "rel
   --notes "在此输入更新日志"
 ```
 
-### 第五步：连同 Appcast 提交生效
-在以上步骤完全跑通且 GitHub Release 能正常访问您的归档后：
+### 第四步：用远端资产生成 Sparkle appcast
+GitHub Release 创建并确认两个 DMG 都能下载后，再调用发布脚本生成 `appcast.xml`。该脚本会优先重新下载 GitHub Release 上真实可被用户下载到的资产，并以远端字节生成 `length` 与 `sparkle:edSignature`。
+
+// turbo
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/release.sh "$VERSION"
+xmllint --noout appcast.xml
+```
+
+### 第五步：最后单独提交 Appcast
+在以上步骤完全跑通且 GitHub Release 能正常访问您的归档后，单独提交并推送 `appcast.xml`，这是 Sparkle 更新对用户生效的最后一步。
 
 // turbo
 ```bash
 git add appcast.xml
-git commit -m "chore: release LiquidConvert v$VERSION with dual architecture builds"
-git push
+git commit -m "Update appcast for $VERSION"
+git push origin main
 ```
-执行完毕后，应用端就能够接收到相应体积更精简的更新包了。
+
+### 第六步：验证 App 内检查更新
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/ShawnRn/LiquidConvert/main/appcast.xml" | xmllint --noout -
+curl -I "https://github.com/ShawnRn/LiquidConvert/releases/download/v$VERSION/LiquidConvert_${VERSION}_arm64.dmg"
+curl -I "https://github.com/ShawnRn/LiquidConvert/releases/download/v$VERSION/LiquidConvert_${VERSION}_x86_64.dmg"
+```
+
+确认 raw `appcast.xml` 顶部 `<sparkle:shortVersionString>`、`<sparkle:version>`、两个 DMG URL、`length`、`sparkle:edSignature` 都对应本次 GitHub Release 后，应用端就能够通过“检查更新”接收到双架构更新包。

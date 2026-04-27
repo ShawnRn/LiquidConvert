@@ -230,9 +230,34 @@ extension NSItemProvider {
                 self.loadItem(forTypeIdentifier: typeIdentifier, options: nil) { item, error in
                     if let url = item as? URL {
                         continuation.resume(returning: url)
+                    } else if let url = item as? NSURL {
+                        continuation.resume(returning: url as URL)
                     } else if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
                         continuation.resume(returning: url)
                     } else {
+                        continuation.resume(returning: nil)
+                    }
+                }
+            } else if let fallbackType = self.registeredTypeIdentifiers.first(where: { UTType($0)?.conforms(to: .data) == true }) {
+                self.loadFileRepresentation(forTypeIdentifier: fallbackType) { url, error in
+                    guard let url else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+
+                    let ext = UTType(fallbackType)?.preferredFilenameExtension ?? url.pathExtension
+                    let filename = ext.isEmpty
+                        ? "liquidconvert-drop-\(UUID().uuidString)"
+                        : "liquidconvert-drop-\(UUID().uuidString).\(ext)"
+                    let destination = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+
+                    do {
+                        if FileManager.default.fileExists(atPath: destination.path) {
+                            try FileManager.default.removeItem(at: destination)
+                        }
+                        try FileManager.default.copyItem(at: url, to: destination)
+                        continuation.resume(returning: destination)
+                    } catch {
                         continuation.resume(returning: nil)
                     }
                 }
