@@ -384,8 +384,21 @@ struct VideoTimelineView: View {
     @State private var initialStartTime: Double = 0
     @State private var initialEndTime: Double = 0
 
+    private func time(at x: CGFloat, in width: CGFloat) -> Double {
+        let percentage = x / max(1, width)
+        return max(0, min(duration, Double(percentage) * duration))
+    }
+    
+    private func position(for time: Double, in width: CGFloat) -> CGFloat {
+        let percentage = CGFloat(time / max(0.01, duration))
+        return percentage * width
+    }
+
     var body: some View {
         GeometryReader { geometry in
+            let totalWidth = geometry.size.width
+            let safeDuration = max(0.01, duration)
+            
             ZStack(alignment: .leading) {
                 // 1. Filmstrip Background (Thumbnails)
                 HStack(spacing: 0) {
@@ -396,7 +409,7 @@ struct VideoTimelineView: View {
                             Image(nsImage: thumbnails[index])
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: geometry.size.width / CGFloat(thumbnails.count))
+                                .frame(width: totalWidth / CGFloat(thumbnails.count))
                                 .clipped()
                         }
                     }
@@ -404,17 +417,16 @@ struct VideoTimelineView: View {
                 .cornerRadius(6)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.1), lineWidth: 1))
 
-                // 2. Dimmed Out-of-Range Background (Safe Calculation)
-                let safeDuration = max(0.01, duration)
-                let startPos = (startTime / safeDuration) * geometry.size.width
-                let endPos = (endTime / safeDuration) * geometry.size.width
+                // 2. Dimmed Out-of-Range Background
+                let startPos = position(for: startTime, in: totalWidth)
+                let endPos = position(for: endTime, in: totalWidth)
                 
                 Group {
                     Color.black.opacity(0.6)
                         .frame(width: max(0, startPos))
                     
                     Color.black.opacity(0.6)
-                        .frame(width: max(0, geometry.size.width - endPos))
+                        .frame(width: max(0, totalWidth - endPos))
                         .offset(x: max(0, endPos))
                 }
                 .allowsHitTesting(false)
@@ -434,9 +446,7 @@ struct VideoTimelineView: View {
                                     initialEndTime = endTime
                                 }
                                 
-                                let totalWidth = geometry.size.width
-                                let deltaX = value.translation.width
-                                let deltaTime = (Double(deltaX) / max(1, Double(totalWidth))) * duration
+                                let deltaTime = (Double(value.translation.width) / max(1, Double(totalWidth))) * duration
                                 dragOffset = deltaTime
                                 
                                 let selectionDuration = initialEndTime - initialStartTime
@@ -450,7 +460,7 @@ struct VideoTimelineView: View {
                                 
                                 startTime = newStart
                                 endTime = newStart + selectionDuration
-                                onSeek(startTime) // 同步预览起始点
+                                onSeek(startTime)
                             }
                             .onEnded { _ in
                                 dragOffset = 0
@@ -461,22 +471,19 @@ struct VideoTimelineView: View {
                 Color.black.opacity(0.001)
                     .contentShape(Rectangle())
                     .onContinuousHover { phase in
-                        if isPlaying { return } // 🎬 播放期间不响应悬浮预览
+                        if isPlaying { return }
                         
                         switch phase {
                         case .active(let location):
-                            let totalWidth = max(1, geometry.size.width)
-                            let time = (location.x / totalWidth) * duration
-                            skimmingTime = max(0, min(duration, time))
+                            skimmingTime = time(at: location.x, in: totalWidth)
                             onSkim(skimmingTime!)
                         case .ended:
                             skimmingTime = nil
-                            onSkimEnd() // 🏖️ 告知外部归位
+                            onSkimEnd()
                         }
                     }
                     .onTapGesture { location in
-                        let time = (location.x / geometry.size.width) * duration
-                        onSeek(max(0, min(duration, time)))
+                        onSeek(time(at: location.x, in: totalWidth))
                     }
 
                 // 5. Trim Handles
@@ -485,9 +492,7 @@ struct VideoTimelineView: View {
                     .gesture(
                         DragGesture()
                             .onChanged { value in
-                                let x = value.location.x
-                                let newTime = (x / geometry.size.width) * duration
-                                startTime = max(0, min(endTime - 0.1, newTime))
+                                startTime = time(at: value.location.x, in: totalWidth)
                                 onSeek(startTime)
                                 skimmingTime = nil
                             }
@@ -498,9 +503,7 @@ struct VideoTimelineView: View {
                     .gesture(
                         DragGesture()
                             .onChanged { value in
-                                let x = value.location.x
-                                let newTime = (x / geometry.size.width) * duration
-                                endTime = min(duration, max(startTime + 0.1, newTime))
+                                endTime = max(startTime + 0.1, time(at: value.location.x, in: totalWidth))
                                 onSeek(endTime)
                                 skimmingTime = nil
                             }
@@ -508,11 +511,11 @@ struct VideoTimelineView: View {
 
                 // 6. Skimmer Line (Red)
                 if let skimmerTime = skimmingTime, !isPlaying {
-                    SkimmerView(time: skimmerTime, duration: duration, width: geometry.size.width)
+                    SkimmerView(time: skimmerTime, duration: duration, width: totalWidth)
                 }
 
                 // 7. Playhead (White Line)
-                PlayheadView(time: currentTime, duration: safeDuration, width: geometry.size.width)
+                PlayheadView(time: currentTime, duration: safeDuration, width: totalWidth)
             }
         }
     }

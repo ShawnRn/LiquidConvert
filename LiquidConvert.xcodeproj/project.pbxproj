@@ -7,15 +7,23 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		38C8446299C2692BA29CF7C0 /* wechat_article_reader.py in Sources */ = {isa = PBXBuildFile; fileRef = 010E4AEC830BDBFD0F99E1E2 /* wechat_article_reader.py */; };
+		3EDC4E5AA1937493E3661AF1 /* wechat_article_reader_plus.py in Sources */ = {isa = PBXBuildFile; fileRef = 631C4018825F93D64ED2AB64 /* wechat_article_reader_plus.py */; };
 		462659C32F362CF200BBBE9F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 462659C22F362CF200BBBE9F /* Sparkle */; };
+		9D8448A7B09737532A9C73E4 /* wechat_article_reader.py in Sources */ = {isa = PBXBuildFile; fileRef = E57147398E80ACF883E1A5A2 /* wechat_article_reader.py */; };
+		F18D4D699B73A07766C2C4C9 /* wechat_article_reader_plus.py in Sources */ = {isa = PBXBuildFile; fileRef = 957F4491B52E5D041B1CC5AF /* wechat_article_reader_plus.py */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		010E4AEC830BDBFD0F99E1E2 /* wechat_article_reader.py */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.python; name = wechat_article_reader.py; path = LiquidConvert/AIDocumentExtract/wechat_article_reader.py; sourceTree = SOURCE_ROOT; };
 		46A8690F2EDE727400D61126 /* LiquidConvert.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LiquidConvert.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		631C4018825F93D64ED2AB64 /* wechat_article_reader_plus.py */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.python; name = wechat_article_reader_plus.py; path = LiquidConvert/AIDocumentExtract/wechat_article_reader_plus.py; sourceTree = SOURCE_ROOT; };
+		957F4491B52E5D041B1CC5AF /* wechat_article_reader_plus.py */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.python; name = wechat_article_reader_plus.py; path = LiquidConvert/AIDocumentExtract/wechat_article_reader_plus.py; sourceTree = SOURCE_ROOT; };
+		E57147398E80ACF883E1A5A2 /* wechat_article_reader.py */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.python; name = wechat_article_reader.py; path = LiquidConvert/AIDocumentExtract/wechat_article_reader.py; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		468B60302F2059FC00090725 /* Exceptions for "LiquidConvert" folder in "LiquidConvert" target */ = {
+		468B60302F2059FC00090725 = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -25,14 +33,7 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		46A869112EDE727400D61126 /* LiquidConvert */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				468B60302F2059FC00090725 /* Exceptions for "LiquidConvert" folder in "LiquidConvert" target */,
-			);
-			path = LiquidConvert;
-			sourceTree = "<group>";
-		};
+		46A869112EDE727400D61126 /* LiquidConvert */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (468B60302F2059FC00090725, ); path = LiquidConvert; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,6 +53,10 @@
 			children = (
 				46A869112EDE727400D61126 /* LiquidConvert */,
 				46A869102EDE727400D61126 /* Products */,
+				010E4AEC830BDBFD0F99E1E2 /* wechat_article_reader.py */,
+				631C4018825F93D64ED2AB64 /* wechat_article_reader_plus.py */,
+				E57147398E80ACF883E1A5A2 /* wechat_article_reader.py */,
+				957F4491B52E5D041B1CC5AF /* wechat_article_reader_plus.py */,
 			);
 			sourceTree = "<group>";
 		};
@@ -143,6 +148,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				38C8446299C2692BA29CF7C0 /* wechat_article_reader.py in Sources */,
+				3EDC4E5AA1937493E3661AF1 /* wechat_article_reader_plus.py in Sources */,
+				9D8448A7B09737532A9C73E4 /* wechat_article_reader.py in Sources */,
+				F18D4D699B73A07766C2C4C9 /* wechat_article_reader_plus.py in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -280,7 +289,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026042702;
+				CURRENT_PROJECT_VERSION = 2026042703;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
@@ -294,7 +303,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 3.1.8;
+				MARKETING_VERSION = 3.1.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shawnrain.LiquidConvert;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -314,7 +323,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026042702;
+				CURRENT_PROJECT_VERSION = 2026042703;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
@@ -328,7 +337,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
-				MARKETING_VERSION = 3.1.8;
+				MARKETING_VERSION = 3.1.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.shawnrain.LiquidConvert;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

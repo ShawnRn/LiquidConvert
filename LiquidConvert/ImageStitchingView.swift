@@ -684,60 +684,21 @@ struct ImageStitchingView: View, Sendable {
         
         var newInMarquee: Set<URL> = []
         
-        // 🔥 Coordinate Transform: Viewport -> Unscaled Content
-        // The content is CENTERED in the viewport via `.frame(..., alignment: .center)`
-        // So we need to calculate where the content actually starts
-        let ox = currentScrollOffset.x
-        let oy = currentScrollOffset.y
-        let z = zoomScale
+        // Calculate scaled dimensions and centering offset
+        let scaledContentW = contentSize.width * zoomScale
+        let scaledContentH = contentSize.height * zoomScale
         
-        // Scaled content size
-        let scaledContentW = contentSize.width * z
-        let scaledContentH = contentSize.height * z
-        
-        // Viewport size (approximation - we use contentSize as proxy since we don't have proxy here)
-        // Actually, the frame is `max(viewport, scaledContent)`, and content is centered.
-        // Let's get the actual viewport from the outer frame.
-        // For now, assume viewport >= scaledContent (common case), so centering offset exists.
-        // The content's top-left in viewport coords = ((viewportW - scaledContentW)/2, (viewportH - scaledContentH)/2) + offset
-        // But we don't have viewportSize here. Let's use itemSizes-based approach instead:
-        // The items are laid out from (0,0) in content-local coords.
-        // The marquee is in viewport coords.
-        // Transform: content-local = (viewport - offset - centeringOffset) / z
-        // Since we don't have viewportSize, we can infer:
-        // The content is placed at offset = currentScrollOffset from its center.
-        // This is complex. Let's simplify by using the stored viewportSize if available.
-        
-        // Actually, re-reading the layout:
-        // Line 231: `.frame(width: max(proxy.size.width, contentSize.width * z), ...)`
-        // This creates a frame that's at least viewport-sized.
-        // Content inside is centered (default alignment).
-        // So if viewport > scaledContent, content is centered.
-        // Content origin in this frame = ((frameW - scaledContentW)/2, (frameH - scaledContentH)/2)
-        // frameW = max(viewportW, scaledContentW)
-        // If scaledContentW < viewportW: contentOriginX = (viewportW - scaledContentW)/2
-        // If scaledContentW >= viewportW: contentOriginX = 0
-        
-        // The marquee is drawn in "canvas" coordinate space (line 291: .coordinateSpace(name: "canvas"))
-        // This is on the root ZStack, AFTER the frame(proxy.size) modifier.
-        // So marquee coords are in viewport space (0,0) = top-left of visible area.
-        
-        // 🔥 Calculate centering offset using viewportSize
-        // The content is centered when smaller than viewport
         let frameW = max(viewportSize.width, scaledContentW)
         let frameH = max(viewportSize.height, scaledContentH)
         let centeringOffsetX = (frameW - scaledContentW) / 2
         let centeringOffsetY = (frameH - scaledContentH) / 2
         
-        // Transform marquee from viewport coords to content-local coords:
-        // 1. Subtract scroll offset (ox, oy) - content moves with offset
-        // 2. Subtract centering offset - content is shifted down/right when centered
-        // 3. Divide by zoom scale - content coordinates are unscaled
+        // Transform marquee from viewport coords to content-local coords
         let contentMarquee = CGRect(
-            x: (selectionRect.minX - ox - centeringOffsetX) / z,
-            y: (selectionRect.minY - oy - centeringOffsetY) / z,
-            width: selectionRect.width / z,
-            height: selectionRect.height / z
+            x: (selectionRect.minX - currentScrollOffset.x - centeringOffsetX) / zoomScale,
+            y: (selectionRect.minY - currentScrollOffset.y - centeringOffsetY) / zoomScale,
+            width: selectionRect.width / zoomScale,
+            height: selectionRect.height / zoomScale
         )
         
         for url in files {

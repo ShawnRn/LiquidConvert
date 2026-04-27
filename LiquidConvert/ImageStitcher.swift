@@ -107,93 +107,23 @@ struct ImageStitcher {
             return false
         }
         
-        // 2. 计算画布尺寸 (后台)
-        var canvasWidth: Int = 0
-        var canvasHeight: Int = 0
-        struct DrawRect { let x: CGFloat; let y: CGFloat; let width: CGFloat; let height: CGFloat }
-        var drawRects: [DrawRect] = []
+        // 2. 计算画布尺寸与坐标 (后台)
+        var (canvasWidth, canvasHeight, drawRects) = calculateLayout(
+            direction: direction,
+            validImages: validImages,
+            mobileOptimize: mobileOptimize
+        )
         
-        // 移动端优化基准: iPhone 17 标准版短边 1206px
-        let mobileBaseline: CGFloat = 1206.0
-        
-        switch direction {
-        case .grid:
-            if validImages.count == 4 {
-                // 四宫格逻辑: 2x2
-                let maxWidth = CGFloat(validImages.map { $0.width }.max() ?? 0)
-                let maxHeight = CGFloat(validImages.map { $0.height }.max() ?? 0)
-                
-                // 如果开启移动端优化，单张图的基准宽度
-                let cellWidth = mobileOptimize ? mobileBaseline : maxWidth
-                let cellHeight = cellWidth * (maxHeight / maxWidth)
-                
-                canvasWidth = Int(cellWidth * 2)
-                canvasHeight = Int(cellHeight * 2)
-                
-                // 坐标计算 (Core Graphics 坐标系 y 轴向上)
-                // 第一行 (视觉上): 0,1 (y 较大)
-                // 第二行 (视觉上): 2,3 (y 较小)
-                drawRects.append(DrawRect(x: 0, y: cellHeight, width: cellWidth, height: cellHeight))         // 左上
-                drawRects.append(DrawRect(x: cellWidth, y: cellHeight, width: cellWidth, height: cellHeight)) // 右上
-                drawRects.append(DrawRect(x: 0, y: 0, width: cellWidth, height: cellHeight))                  // 左下
-                drawRects.append(DrawRect(x: cellWidth, y: 0, width: cellWidth, height: cellHeight))          // 右下
-            } else {
-                // Fallback to vertical if not 4 images for grid
-                // This logic is similar to the .vertical case, but needs to calculate drawRects correctly for y-axis
-                let targetWidth = mobileOptimize ? mobileBaseline : CGFloat(validImages.map { $0.width }.max() ?? 0)
-                canvasWidth = Int(targetWidth)
-                var totalHeight: CGFloat = 0
-                var tempRects: [(w: CGFloat, h: CGFloat)] = []
-                for item in validImages {
-                    let scale = targetWidth / CGFloat(item.width)
-                    let scaledHeight = CGFloat(item.height) * scale
-                    tempRects.append((targetWidth, scaledHeight))
-                    totalHeight += scaledHeight
-                }
-                canvasHeight = Int(ceil(totalHeight))
-
-                var currentY = CGFloat(canvasHeight)
-                for rect in tempRects {
-                    currentY -= rect.h
-                    drawRects.append(DrawRect(x: 0, y: currentY, width: rect.w, height: rect.h))
-                }
+        // 🔥 安全防护: 限制最大像素尺寸防止 OOM (16384 是一般硬件纹理上限)
+        let maxAllowedDimension: Int = 16384
+        if canvasWidth > maxAllowedDimension || canvasHeight > maxAllowedDimension {
+            let scale = CGFloat(maxAllowedDimension) / CGFloat(max(canvasWidth, canvasHeight))
+            canvasWidth = Int(CGFloat(canvasWidth) * scale)
+            canvasHeight = Int(CGFloat(canvasHeight) * scale)
+            drawRects = drawRects.map { r in
+                CGRect(x: r.minX * scale, y: r.minY * scale, width: r.width * scale, height: r.height * scale)
             }
-        case .vertical:
-            let targetWidth = mobileOptimize ? mobileBaseline : CGFloat(validImages.map { $0.width }.max() ?? 0)
-            canvasWidth = Int(targetWidth)
-            var totalHeight: CGFloat = 0
-            var tempRects: [(w: CGFloat, h: CGFloat)] = []
-            for item in validImages {
-                let scale = targetWidth / CGFloat(item.width)
-                let scaledHeight = CGFloat(item.height) * scale
-                tempRects.append((targetWidth, scaledHeight))
-                totalHeight += scaledHeight
-            }
-            canvasHeight = Int(ceil(totalHeight))
-            
-            var currentY = CGFloat(canvasHeight)
-            for rect in tempRects {
-                currentY -= rect.h
-                drawRects.append(DrawRect(x: 0, y: currentY, width: rect.w, height: rect.h))
-            }
-        case .horizontal:
-            let targetHeight = mobileOptimize ? mobileBaseline : CGFloat(validImages.map { $0.height }.max() ?? 0)
-            canvasHeight = Int(targetHeight)
-            var totalWidth: CGFloat = 0
-            var tempRects: [(w: CGFloat, h: CGFloat)] = []
-            for item in validImages {
-                let scale = targetHeight / CGFloat(item.height)
-                let scaledWidth = CGFloat(item.width) * scale
-                tempRects.append((scaledWidth, targetHeight))
-                totalWidth += scaledWidth
-            }
-            canvasWidth = Int(ceil(totalWidth))
-            
-            var currentX: CGFloat = 0
-            for rect in tempRects {
-                drawRects.append(DrawRect(x: currentX, y: 0, width: rect.w, height: rect.h))
-                currentX += rect.w
-            }
+            print("⚠️ [安全限制] 缩放画布至 \(canvasWidth)x\(canvasHeight) 防止 OOM")
         }
         
         // 3. 绘制拼接图 (后台)
@@ -207,8 +137,7 @@ struct ImageStitcher {
         context.fill(CGRect(x: 0, y: 0, width: canvasWidth, height: canvasHeight))
         
         for (index, item) in validImages.enumerated() {
-            let r = drawRects[index]
-            context.draw(item.image, in: CGRect(x: r.x, y: r.y, width: r.width, height: r.height))
+            context.draw(item.image, in: drawRects[index])
         }
 
         guard let stitchedImage = context.makeImage() else { return false }
@@ -291,5 +220,94 @@ struct ImageStitcher {
         }
         
         return destination
+    }
+    
+    // MARK: - Helper Methods
+    
+    nonisolated private static func calculateLayout(
+        direction: StitchDirection,
+        validImages: [(image: CGImage, width: Int, height: Int)],
+        mobileOptimize: Bool
+    ) -> (canvasWidth: Int, canvasHeight: Int, drawRects: [CGRect]) {
+        var canvasWidth: Int = 0
+        var canvasHeight: Int = 0
+        var drawRects: [CGRect] = []
+        
+        let mobileBaseline: CGFloat = 1206.0
+        
+        switch direction {
+        case .grid:
+            if validImages.count == 4 {
+                let maxWidth = CGFloat(validImages.map { $0.width }.max() ?? 0)
+                let maxHeight = CGFloat(validImages.map { $0.height }.max() ?? 0)
+                
+                let cellWidth = mobileOptimize ? mobileBaseline : maxWidth
+                let cellHeight = cellWidth * (maxHeight / maxWidth)
+                
+                canvasWidth = Int(cellWidth * 2)
+                canvasHeight = Int(cellHeight * 2)
+                
+                drawRects.append(CGRect(x: 0, y: cellHeight, width: cellWidth, height: cellHeight))
+                drawRects.append(CGRect(x: cellWidth, y: cellHeight, width: cellWidth, height: cellHeight))
+                drawRects.append(CGRect(x: 0, y: 0, width: cellWidth, height: cellHeight))
+                drawRects.append(CGRect(x: cellWidth, y: 0, width: cellWidth, height: cellHeight))
+            } else {
+                let targetWidth = mobileOptimize ? mobileBaseline : CGFloat(validImages.map { $0.width }.max() ?? 0)
+                canvasWidth = Int(targetWidth)
+                var totalHeight: CGFloat = 0
+                var tempRects: [(w: CGFloat, h: CGFloat)] = []
+                for item in validImages {
+                    let scale = targetWidth / CGFloat(item.width)
+                    let scaledHeight = CGFloat(item.height) * scale
+                    tempRects.append((targetWidth, scaledHeight))
+                    totalHeight += scaledHeight
+                }
+                canvasHeight = Int(ceil(totalHeight))
+
+                var currentY = CGFloat(canvasHeight)
+                for rect in tempRects {
+                    currentY -= rect.h
+                    drawRects.append(CGRect(x: 0, y: currentY, width: rect.w, height: rect.h))
+                }
+            }
+        case .vertical:
+            let targetWidth = mobileOptimize ? mobileBaseline : CGFloat(validImages.map { $0.width }.max() ?? 0)
+            canvasWidth = Int(targetWidth)
+            var totalHeight: CGFloat = 0
+            var tempRects: [(w: CGFloat, h: CGFloat)] = []
+            for item in validImages {
+                let scale = targetWidth / CGFloat(item.width)
+                let scaledHeight = CGFloat(item.height) * scale
+                tempRects.append((targetWidth, scaledHeight))
+                totalHeight += scaledHeight
+            }
+            canvasHeight = Int(ceil(totalHeight))
+            
+            var currentY = CGFloat(canvasHeight)
+            for rect in tempRects {
+                currentY -= rect.h
+                drawRects.append(CGRect(x: 0, y: currentY, width: rect.w, height: rect.h))
+            }
+        case .horizontal:
+            let targetHeight = mobileOptimize ? mobileBaseline : CGFloat(validImages.map { $0.height }.max() ?? 0)
+            canvasHeight = Int(targetHeight)
+            var totalWidth: CGFloat = 0
+            var tempRects: [(w: CGFloat, h: CGFloat)] = []
+            for item in validImages {
+                let scale = targetHeight / CGFloat(item.height)
+                let scaledWidth = CGFloat(item.width) * scale
+                tempRects.append((scaledWidth, targetHeight))
+                totalWidth += scaledWidth
+            }
+            canvasWidth = Int(ceil(totalWidth))
+            
+            var currentX: CGFloat = 0
+            for rect in tempRects {
+                drawRects.append(CGRect(x: currentX, y: 0, width: rect.w, height: rect.h))
+                currentX += rect.w
+            }
+        }
+        
+        return (canvasWidth, canvasHeight, drawRects)
     }
 }

@@ -29,8 +29,8 @@ enum WeChatArticleExtractor {
             do {
                 article = try await WeChatRenderedPageReader().extract(url: url)
             } catch {
-                if let cliResult = try await extractWithLocalWXCLI(url: url) {
-                    return cliResult
+                if let result = try? await extractWithBundledWXScript(url: url) {
+                    return result
                 }
                 throw error
             }
@@ -87,8 +87,11 @@ enum WeChatArticleExtractor {
         return html
     }
 
-    private static func extractWithLocalWXCLI(url: URL) async throws -> AIDocumentExtractionResult? {
-        guard let wxPath = localWXCLIPath() else { return nil }
+    private static func extractWithBundledWXScript(url: URL) async throws -> AIDocumentExtractionResult? {
+        guard let scriptPath = Bundle.main.url(forResource: "wechat_article_reader_plus", withExtension: "py")?.path else { return nil }
+
+        let runtime = try await ManagedMarkItDownRuntime.shared.prepare()
+        let pythonPath = runtime.pythonExecutable.path
 
         let markdown = try await Task.detached(priority: .userInitiated) {
             let outputURL = FileManager.default.temporaryDirectory
@@ -98,22 +101,22 @@ enum WeChatArticleExtractor {
             }
 
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: wxPath)
+            process.executableURL = URL(fileURLWithPath: pythonPath)
             process.arguments = [
+                scriptPath,
                 url.absoluteString,
-                "--force-ocr",
-                "--max-ocr-images",
-                "0",
-                "--no-save",
+                "--format", "markdown",
+                "--ocr", "always",
+                "--max-ocr-images", "0",
+                "--output", outputURL.path
             ]
+            
+            var environment = ProcessInfo.processInfo.environment
+            environment["PYTHONUTF8"] = "1"
+            process.environment = environment
 
             let errorOutput = Pipe()
             FileManager.default.createFile(atPath: outputURL.path, contents: nil)
-            let outputHandle = try FileHandle(forWritingTo: outputURL)
-            defer {
-                try? outputHandle.close()
-            }
-            process.standardOutput = outputHandle
             process.standardError = errorOutput
 
             try process.run()
@@ -124,7 +127,7 @@ enum WeChatArticleExtractor {
             let text = String(data: data, encoding: .utf8) ?? ""
 
             guard process.terminationStatus == 0, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                let errorText = String(data: errorData, encoding: .utf8) ?? "本地 wx CLI 提取失败。"
+                let errorText = String(data: errorData, encoding: .utf8) ?? "本地 Python 提取失败。"
                 throw NSError(
                     domain: "WeChatArticleExtractor",
                     code: Int(process.terminationStatus),
@@ -141,17 +144,6 @@ enum WeChatArticleExtractor {
             source: .link(url),
             suggestedTitle: markdownTitle(from: normalizedMarkdown)
         )
-    }
-
-    private static func localWXCLIPath() -> String? {
-        let candidates = [
-            "/opt/homebrew/bin/wx",
-            "/usr/local/bin/wx",
-            "\(NSHomeDirectory())/.local/bin/wx",
-            "\(NSHomeDirectory())/Documents/ifanr/wechat-article-reader-skill/bin/wx",
-        ]
-
-        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
     private static func normalizeWXCLIMarkdown(_ markdown: String) -> String {

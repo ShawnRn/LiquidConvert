@@ -111,9 +111,9 @@ struct ImageCompressor {
         }
 
         // 3. 生成输出路径
-        // 3. 生成输出路径
+        let outputExtension = outputFormat == .jpeg ? "jpg" : (outputFormat.preferredFilenameExtension ?? ext)
         let outputURL = generateOutputURL(
-            from: inputURL, targetExtension: outputFormat.preferredFilenameExtension)
+            from: inputURL, targetExtension: outputExtension)
 
         // 4. 获取元数据
         var destProperties = rasterImage.properties
@@ -403,8 +403,9 @@ struct ImageCompressor {
         properties sourceProperties: [CFString: Any],
         deleteOriginal: Bool
     ) throws -> URL {
+        let outputExtension = format == .jpeg ? "jpg" : format.preferredFilenameExtension
         let outputURL = generateOutputURL(
-            from: inputURL, targetExtension: format.preferredFilenameExtension)
+            from: inputURL, targetExtension: outputExtension)
 
         guard
             let destination = CGImageDestinationCreateWithURL(

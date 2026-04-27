@@ -151,6 +151,11 @@ struct ContentView: View {
         } message: {
             Text("您在图片拼接页面有未处理的图片。\n离开将导致当前进度丢失。")
         }
+        .onAppear {
+            // 每次窗口被重新创建（如 Cmd+W 关闭后点击 Dock）时，自动回到主页
+            appState.selectedTab = .home
+            appState.isStitchingDirty = false
+        }
     }
 }
 
