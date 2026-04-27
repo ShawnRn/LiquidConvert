@@ -66,6 +66,8 @@ secrets/
 
 # Agent
 .agent/skills/
+.agents/scratch/
+.agents/logs/
 
 # Excluded by User
 AppIconSet/
