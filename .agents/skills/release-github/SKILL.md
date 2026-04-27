@@ -18,56 +18,33 @@ changelog: "v2.0.0: 修正为 LiquidConvert 专用流程，明确 appcast 必须
 
 ## 标准流程
 
-1. 更新 `MARKETING_VERSION` 与 `CURRENT_PROJECT_VERSION`。Build 号使用日期序号 `YYYYMMDDNN`，必须大于 appcast 中最新 `<sparkle:version>`。
-2. 提交并推送业务代码、版本号、文档和工作流变更，但排除 `appcast.xml`。
-3. 本地构建双架构 DMG：
+> [!CAUTION]
+> **本地禁止手动物理打包发布。所有发版强制走 GitHub Actions。**
+
+1. 确认已在 Xcode 中或使用 `sed` 将 `MARKETING_VERSION` 与 `CURRENT_PROJECT_VERSION` 更新。Build 号使用日期序号 `YYYYMMDDNN`，必须大于旧版本的 build 号。
+2. 提交并推送业务代码、版本号等变更到 `main` 分支。
+3. 触发 GitHub Actions Release：
 
 ```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/build.sh release
+gh workflow run release.yml
 ```
 
-4. 创建 GitHub Release 并上传两个 DMG：
+4. 等待 GitHub Actions 执行完成。它会自动：
+   - 构建 arm64 与 x86_64 两个 DMG。
+   - 创建或更新对应 tag 的 GitHub Release 并上传资产。
+   - 生成 Sparkle 的 `appcast.xml` 并自动将其提交推送到仓库 `main` 分支。
+
+5. 验证执行结果与 `appcast` 是否生效：
 
 ```bash
-VERSION="<version>"
-gh release create "v$VERSION" \
-  "releases/LiquidConvert_${VERSION}_arm64.dmg" \
-  "releases/LiquidConvert_${VERSION}_x86_64.dmg" \
-  --target main \
-  --title "LiquidConvert $VERSION" \
-  --notes "<中文更新日志>"
-```
-
-5. Release 资产上传完成后，再生成 appcast：
-
-```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/release.sh "$VERSION"
-xmllint --noout appcast.xml
-```
-
-6. 单独提交并推送 appcast：
-
-```bash
-git add appcast.xml
-git commit -m "Update appcast for $VERSION"
-git push origin main
-```
-
-7. 验证：
-
-```bash
+gh run list --limit 3
+git pull
 curl -fsSL "https://raw.githubusercontent.com/ShawnRn/LiquidConvert/main/appcast.xml" | xmllint --noout -
-curl -I "https://github.com/ShawnRn/LiquidConvert/releases/download/v$VERSION/LiquidConvert_${VERSION}_arm64.dmg"
-curl -I "https://github.com/ShawnRn/LiquidConvert/releases/download/v$VERSION/LiquidConvert_${VERSION}_x86_64.dmg"
-gh release view "v$VERSION"
-gh run list --limit 5
 ```
 
 ## GitHub Actions 约束
 
-- `.github/workflows/release.yml` 是手动 `workflow_dispatch` 兜底，不再由 tag push 自动发布，避免本地流程与 Actions 同时写 Release / appcast。
-- 如果手动 workflow 生成 appcast，必须先 snapshot，再 restore dirty appcast，切到最新默认分支后重新应用 snapshot 再 commit。
-- 正常发布时，`appcast.xml` 只能有一个写入者。优先使用本地终端流程；如果本机没有 Sparkle 私钥，则让手动 workflow 使用 `SPARKLE_PRIVATE_KEY` secret 写入。
+- 正常发布时统一使用 `workflow_dispatch` 触发 `.github/workflows/release.yml`，该工作流利用 Repo Secret 中的 `SPARKLE_PRIVATE_KEY` 生成并推送包含 `edSignature` 的 `appcast.xml`。
 
 ## Sparkle 关键校验
 

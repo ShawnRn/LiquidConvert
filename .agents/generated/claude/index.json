@@ -1,0 +1,96 @@
+{
+  "product": "liquidconvert",
+  "agent": "claude",
+  "generated_at": "2026-04-10T00:40:38.303940+00:00",
+  "skill_repo": "/Users/shawnrain/agent-skills",
+  "skill_repo_commit": "unknown",
+  "adapter_mode": "generated-only",
+  "skills": [
+    {
+      "id": "always-zh-cn",
+      "name": "Always Simplified Chinese",
+      "version": "1.0.0",
+      "summary": "强制技术文档、用户沟通和默认 UI 文案优先使用简体中文。",
+      "scope": "core",
+      "products": [
+        "liquidconvert"
+      ],
+      "domains": [
+        "language",
+        "communication",
+        "localization"
+      ],
+      "triggers": [
+        "中文",
+        "简体中文",
+        "zh-cn",
+        "文档",
+        "沟通"
+      ],
+      "paths": [],
+      "excludes": [],
+      "dependencies": [],
+      "priority": 40,
+      "tools_required": [],
+      "risk_level": "low",
+      "adapter_support": [
+        "codex",
+        "antigravity",
+        "claude"
+      ],
+      "owner": "shawnrain",
+      "status": "active"
+    },
+    {
+      "id": "build-macos-apps",
+      "name": "Build macOS Apps",
+      "version": "1.0.0",
+      "summary": "用 CLI 构建、调试、测试和发布 SwiftUI/AppKit macOS 应用。",
+      "scope": "core",
+      "products": [
+        "liquidconvert",
+        "codexbar",
+        "motrixmac"
+      ],
+      "domains": [
+        "macos",
+        "swiftui",
+        "appkit",
+        "build",
+        "debug",
+        "release"
+      ],
+      "triggers": [
+        "macos",
+        "swiftui",
+        "appkit",
+        "build",
+        "debug",
+        "release"
+      ],
+      "paths": [
+        "Sources/",
+        "Tests/",
+        "scripts/",
+        "Scripts/"
+      ],
+      "excludes": [],
+      "dependencies": [],
+      "priority": 60,
+      "tools_required": [
+        "xcodebuild"
+      ],
+      "risk_level": "medium",
+      "adapter_support": [
+        "codex",
+        "antigravity",
+        "claude"
+      ],
+      "owner": "shawnrain",
+      "status": "active"
+    }
+  ],
+  "workflows": [
+    "release-mac"
+  ]
+}

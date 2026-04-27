@@ -1,0 +1,15 @@
+product: liquidconvert
+skill_repo: /Users/shawnrain/agent-skills
+enabled_skills:
+  - always-zh-cn
+  - build-macos-apps
+enabled_workflows:
+  - release-mac
+preferred_agents:
+  - codex
+  - antigravity
+  - claude
+local_overrides:
+  - liquidconvert-concurrency-rules
+adapter_mode: generated-only
+

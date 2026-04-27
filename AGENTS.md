@@ -62,30 +62,18 @@
 ## 发布流程约定 (Release Workflow)
 
 > [!CAUTION]
-> **`appcast.xml` 必须是全流程中最后一个被 `push` 到远程仓库的文件。**
+> **本地禁止手动物理打包发布。所有发版强制走 GitHub Actions。**
 
-1. **更新代码并推送 (不包含 `appcast.xml`)**：提交业务修改和版本号更新，推送到 GitHub。
-2. **本地构建双架构 DMG**：运行 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/build.sh release`，确认 `releases/LiquidConvert_<version>_arm64.dmg` 与 `releases/LiquidConvert_<version>_x86_64.dmg` 都存在。
-3. **创建 GitHub Release**：使用 GitHub CLI (`gh`) 自动化创建 Release 并上传产物（请一并上传 `arm64` 和 `x86_64` 两个安装包）。例如：
+1. **更新代码与版本号**：完成所有业务修改，确保代码能够通过本地编译 (`./scripts/compile_and_run.sh`)。
+2. **确认版本与 Build 号**：在 Xcode 项目设置中更新 `MARKETING_VERSION` 与 `CURRENT_PROJECT_VERSION`。如果是替换或热修同版本，必须提升 `CURRENT_PROJECT_VERSION`。
+3. **提交并推送至 GitHub**：推送包含版本号更新的提交到远端 `main`。
+4. **触发 GitHub Actions 发包**：使用 GitHub CLI 触发 release 流程。
    ```bash
-   # 请将 $VERSION 替换为实际版本号，如 1.0.1
-   gh release create "v$VERSION" "releases/LiquidConvert_${VERSION}_arm64.dmg" "releases/LiquidConvert_${VERSION}_x86_64.dmg" \
-     --title "LiquidConvert $VERSION" \
-     --notes "在此输入更新日志"
+   gh workflow run release.yml
    ```
-4. **运行发布脚本更新本地 `appcast.xml`**：运行 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/release.sh <version>`。该脚本会优先下载 GitHub Release 上“实际可被用户下载到”的 DMG，并以远端资产为准生成 Sparkle 的 `length` 与 `edSignature`。如果本机没有 `SPARKLE_PRIVATE_KEY` 或 Keychain 私钥，不要手写签名；应先修好并推送发布脚本/工作流防护，再手动触发 `Release` workflow，由 GitHub secret 生成并提交 appcast。
-5. **验证 Sparkle 更新源**：必须执行 `xmllint --noout appcast.xml`，并用 `curl -I` 校验 GitHub Release 的两个 DMG URL 以及 raw `appcast.xml` URL 可访问；提交后还要确认 raw `appcast.xml` 顶部版本、build、双架构 URL、length 和 edSignature 与远端资产一致。
-6. **单独推送 `appcast.xml` (最后一步)**：推送该文件以激活 Sparkle 双架构自适应更新。
+5. **等待并验证**：GitHub Actions 会自动在云端构建双架构 DMG、上传至 GitHub Release，并根据生成的远端资产自动更新、签名和推送 `appcast.xml`。发版完成后，可通过 `gh run list` 和 `git pull` 校验远端 `appcast.xml` 更新情况。
 
 ### Sparkle 额外铁律
-- **禁止**在未创建 GitHub Release 的情况下先生成或推送 `appcast.xml`。
-- **默认禁止用 tag push 自动发布**：当前 `.github/workflows/release.yml` 仅保留 `workflow_dispatch`，新版本优先走本地受控发布流程，避免 GitHub Actions 与本地流程同时写 Release / appcast 造成失败或竞态。
-- **禁止**假设“本地 DMG == GitHub 上可下载到的 DMG”；必须以 `release.sh` 下载回来的远端资产为准生成 Sparkle 签名。
-- **禁止**把 `sign_update` 的错误输出写进 `appcast.xml`。`release.sh` 必须在签名失败、签名为空、签名文本包含 `ERROR`、或 `xmllint` 失败时立即退出。
-- 如果需要“替换最新更新”，优先保持同一版本号并原地替换对应 Release / appcast，不要额外新开一个用户可见版本去掩盖签名事故。
 - 同一用户可见版本内替换有问题的更新时，必须提升 `CURRENT_PROJECT_VERSION`，否则已安装旧 build 的设备不会识别到修复包。
-- **禁止**带着脏工作区直接发版。发版前必须先确认 `git status --short` 为空，或者至少明确只有本次要发布的改动被 stage/commit。
-- 新模块上线前，必须检查入口链路已经入库：`TabIdentifier` / `ContentView` 侧边栏入口 / 主视图路由 / 依赖声明（如 License）要一起进入同一个 release 提交；不能只把实现文件留在仓库里却漏掉入口注册。
-- **禁止**从 tag 工作流的 detached HEAD 直接硬推 `appcast.xml` 到 `main`。GitHub Actions 或手动热修提交 appcast 前，必须先 `fetch origin main`，基于最新 `origin/main` 重新应用生成好的 appcast，再提交推送。
-- 如果手动热修和 Release Actions 同时更新 `appcast.xml`，应比较生成结果与远端 `appcast.xml` 的 SHA；内容已经一致时必须视为成功并跳过提交，不能因为 `fetch first` / non-fast-forward 把发布流程标红。
-- 替换最新 release 时，推荐顺序是：推代码与版本 build -> 重建/替换 GitHub Release 资产 -> 运行 `release.sh` 用远端资产生成 appcast -> 单独提交 appcast。不要让 CI 和本地同时各自生成不同时间戳的 appcast 后抢推 `main`。
+- **禁止**带着脏工作区直接推代码。发版前必须先确认工作区整洁。
+- 新模块上线前，必须检查入口链路已经入库：`TabIdentifier` / `ContentView` 侧边栏入口 / 主视图路由 / 依赖声明（如 License）要一起进入同一个 release 提交。

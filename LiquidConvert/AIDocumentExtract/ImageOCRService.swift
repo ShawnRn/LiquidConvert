@@ -37,21 +37,81 @@ enum ImageOCRService {
                 )
             }
 
-            let request = VNRecognizeTextRequest()
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
-            request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"]
-
-            try VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([request])
-            let lines = (request.results ?? [])
-                .compactMap { observation -> RecognizedLine? in
-                    guard let text = observation.topCandidates(1).first?.string else { return nil }
-                    let normalized = normalizeLine(text)
-                    guard !normalized.isEmpty else { return nil }
-                    return RecognizedLine(text: normalized, boundingBox: observation.boundingBox)
+            let width = CGFloat(cgImage.width)
+            let height = CGFloat(cgImage.height)
+            
+            let maxSliceHeight: CGFloat = 3000
+            var slices: [CGRect] = []
+            
+            if height > maxSliceHeight * 1.2 && width > 0 {
+                let overlap: CGFloat = 200
+                var currentY: CGFloat = 0
+                while currentY < height {
+                    let sliceHeight = min(maxSliceHeight + overlap, height - currentY)
+                    slices.append(CGRect(x: 0, y: currentY, width: width, height: sliceHeight))
+                    currentY += maxSliceHeight
                 }
+            } else {
+                slices.append(CGRect(x: 0, y: 0, width: width, height: height))
+            }
 
-            return normalizedDocument(from: lines)
+            let allMappedLines = try await withThrowingTaskGroup(of: [RecognizedLine].self) { group in
+                for cropRect in slices {
+                    group.addTask {
+                        guard let croppedCGImage = cgImage.cropping(to: cropRect) else { return [] }
+                        let request = VNRecognizeTextRequest()
+                        request.recognitionLevel = .accurate
+                        request.usesLanguageCorrection = true
+                        request.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"]
+                        try VNImageRequestHandler(cgImage: croppedCGImage, options: [:]).perform([request])
+                        
+                        var lines: [RecognizedLine] = []
+                        for observation in request.results ?? [] {
+                            guard let text = observation.topCandidates(1).first?.string else { continue }
+                            let normalized = normalizeLine(text)
+                            guard !normalized.isEmpty else { continue }
+                            
+                            let localBox = observation.boundingBox
+                            let cropHeight = cropRect.height
+                            let cropY = cropRect.minY
+                            let heightRatio = cropHeight / height
+                            let yOffset = (height - cropY - cropHeight) / height
+                            
+                            let globalBox = CGRect(
+                                x: localBox.minX,
+                                y: yOffset + localBox.minY * heightRatio,
+                                width: localBox.width,
+                                height: localBox.height * heightRatio
+                            )
+                            
+                            lines.append(RecognizedLine(text: normalized, boundingBox: globalBox))
+                        }
+                        return lines
+                    }
+                }
+                
+                var results: [RecognizedLine] = []
+                for try await lines in group {
+                    results.append(contentsOf: lines)
+                }
+                return results
+            }
+            
+            var deduplicatedLines: [RecognizedLine] = []
+            for line in allMappedLines {
+                if let duplicateIndex = deduplicatedLines.firstIndex(where: {
+                    abs($0.boundingBox.midY - line.boundingBox.midY) < (line.boundingBox.height * 0.5) &&
+                    abs($0.boundingBox.minX - line.boundingBox.minX) < 0.05
+                }) {
+                    if line.text.count > deduplicatedLines[duplicateIndex].text.count {
+                        deduplicatedLines[duplicateIndex] = line
+                    }
+                } else {
+                    deduplicatedLines.append(line)
+                }
+            }
+
+            return normalizedDocument(from: deduplicatedLines)
         }.value
     }
 

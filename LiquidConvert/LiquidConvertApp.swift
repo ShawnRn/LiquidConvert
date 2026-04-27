@@ -137,11 +137,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         UNUserNotificationCenter.current().delegate = self
     }
 
-    func applicationDidBecomeActive(_ notification: Notification) {
-        guard didFinishLaunching, !shouldHideWindow else { return }
-        reopenMainWindowIfNeeded(reason: "App 激活")
-    }
-
     // 🔥 关键：让 App 在前台也能显示通知
     func userNotificationCenter(
         _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
@@ -158,34 +153,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         return shouldOpenWindow
     }
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if flag {
-            return true
-        }
-
-        if let window = sender.windows.first(where: { $0.canBecomeMain }) {
-            if window.isMiniaturized {
-                window.deminiaturize(nil)
-            }
-            window.makeKeyAndOrderFront(nil)
-            sender.activate(ignoringOtherApps: true)
-            print("🪟 恢复已有主窗口")
-            return false
-        }
-
-        sender.activate(ignoringOtherApps: true)
-        reopenMainWindowIfNeeded(reason: "Dock 重新打开")
+    // 🔥 防止关闭最后窗口自动退出 App
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
-    }
-
-    private func reopenMainWindowIfNeeded(reason: String) {
-        let hasMainWindow = NSApp.windows.contains { window in
-            window.canBecomeMain && window.isVisible && !window.isMiniaturized
-        }
-        guard !hasMainWindow else { return }
-
-        let didRequestWindow = NSApp.sendAction(#selector(NSResponder.newWindowForTab(_:)), to: nil, from: nil)
-        print(didRequestWindow ? "🪟 \(reason)：已请求新主窗口" : "⚠️ \(reason)：无法请求新主窗口")
     }
 
     // MARK: - Dock 拖拽防抖处理
@@ -326,7 +296,7 @@ struct LiquidConvertApp: App {
     @AppStorage("app_appearance") private var appearance: AppAppearance = .system
 
     var body: some Scene {
-        WindowGroup {
+        Window("LiquidConvert", id: "main") {
             ContentView()
                 .frame(minWidth: 1100, minHeight: 700)
                 .background(
@@ -359,11 +329,6 @@ struct LiquidConvertApp: App {
                     appState.selectedTab = .settings
                 }
                 .keyboardShortcut(",", modifiers: .command)
-            }
-
-            // 移除"新建"菜单项
-            CommandGroup(replacing: .newItem) {
-                EmptyView()
             }
         }
     }
