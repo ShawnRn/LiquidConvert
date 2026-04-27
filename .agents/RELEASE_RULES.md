@@ -11,13 +11,13 @@
 1.  **Commit & Push Code**: Handle everything except `appcast.xml`.
 2.  **Build Dual-Arch DMGs Locally**: Run `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/build.sh release` and verify both `LiquidConvert_<version>_arm64.dmg` and `LiquidConvert_<version>_x86_64.dmg` exist.
 3.  **Create Release**: Use `gh release create` or the web UI. Upload both architecture-specific DMGs.
-4.  **Generate Appcast**: Local run of `release.sh`. This script must sign the bytes users actually download from GitHub Release, not blindly trust the local DMG.
+4.  **Generate Appcast**: Local run of `release.sh`. This script must sign the bytes users actually download from GitHub Release, not blindly trust the local DMG. If the local machine does not have `SPARKLE_PRIVATE_KEY` or the Sparkle Keychain private key, do not fabricate or copy signatures; use the manual Release workflow after the script and workflow safety checks are committed.
 5.  **Final Push**: Commit and push `appcast.xml` ONLY after step 3 is confirmed.
 
 ## GitHub Actions Rule
 - `.github/workflows/release.yml` is a manual `workflow_dispatch` fallback only. Do not rely on tag pushes for routine releases.
 - If the workflow ever updates `appcast.xml`, it must snapshot the generated appcast, restore the dirty checkout copy, switch to the latest default branch, then re-apply the snapshot before committing. Otherwise `git switch` can fail with “local changes would be overwritten,” which already broke the v3.1.7 tag run.
-- Local releases should not create a race with Actions. Prefer one writer for `appcast.xml`; for normal releases that writer is the local terminal workflow.
+- Local releases should not create a race with Actions. Prefer one writer for `appcast.xml`; normally that writer is the local terminal workflow, but when the private key is only available as a GitHub secret, the manual workflow is the appcast writer.
 
 ## CI And Manual Hotfix Concurrency Rule
 - Release workflows triggered by tag pushes run from a detached tag checkout. They must not directly commit and push `appcast.xml` from that detached HEAD to `main`.
@@ -29,6 +29,7 @@
 ## Sparkle Verification Rule
 - Before `appcast.xml` is committed, re-download every release asset from GitHub and use those remote bytes to compute `sparkle:edSignature` and `length`.
 - If the downloaded asset hash differs from the local DMG hash, treat the remote asset as the source of truth for Sparkle metadata, otherwise the app will show “更新未正确签名”.
+- `release.sh` must hard-fail if `sign_update` exits non-zero, emits an empty signature, emits text containing `ERROR`, or `xmllint` rejects the generated XML. Never let a signing error string become `sparkle:edSignature`.
 - If the latest published update is broken, replace the existing release/appcast in place instead of minting a new user-visible version just to bypass the bad metadata.
 - When replacing a broken package under the same user-visible version, bump `CURRENT_PROJECT_VERSION` before building so installed apps can detect the replacement build.
 

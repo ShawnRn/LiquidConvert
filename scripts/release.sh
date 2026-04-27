@@ -109,12 +109,39 @@ else
 fi
 
 echo "正在为双架构生成 EdDSA 签名..."
+sign_update_file() {
+    local source_file="$1"
+    local raw_output
+
+    if [ -n "${SPARKLE_PRIVATE_KEY:-}" ]; then
+        if ! raw_output=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_TOOL" --ed-key-file - -p "$source_file" 2>&1); then
+            echo "错误: 签名生成失败: $raw_output" >&2
+            return 1
+        fi
+    else
+        if ! raw_output=$("$SIGN_TOOL" -p "$source_file" 2>&1); then
+            echo "错误: 签名生成失败: $raw_output" >&2
+            return 1
+        fi
+    fi
+
+    local signature
+    signature=$(printf '%s\n' "$raw_output" | grep -Eo '[A-Za-z0-9+/]{80,}={0,2}' | tail -n 1 || true)
+
+    if [ -z "$signature" ] || printf '%s\n' "$raw_output" | grep -qiE 'ERROR|Signing key not found'; then
+        echo "错误: sign_update 未返回有效 EdDSA 签名: $raw_output" >&2
+        return 1
+    fi
+
+    printf '%s' "$signature"
+}
+
 if [ -n "${SPARKLE_PRIVATE_KEY:-}" ]; then
-    SIG_ARM64=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_TOOL" --ed-key-file - -p "$SIGN_SOURCE_ARM64")
-    SIG_X86_64=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SIGN_TOOL" --ed-key-file - -p "$SIGN_SOURCE_X86_64")
+    SIG_ARM64=$(sign_update_file "$SIGN_SOURCE_ARM64")
+    SIG_X86_64=$(sign_update_file "$SIGN_SOURCE_X86_64")
 else
-    SIG_ARM64=$("$SIGN_TOOL" -p "$SIGN_SOURCE_ARM64")
-    SIG_X86_64=$("$SIGN_TOOL" -p "$SIGN_SOURCE_X86_64")
+    SIG_ARM64=$(sign_update_file "$SIGN_SOURCE_ARM64")
+    SIG_X86_64=$(sign_update_file "$SIGN_SOURCE_X86_64")
 fi
 
 if [ -z "$SIG_ARM64" ] || [ -z "$SIG_X86_64" ]; then
@@ -186,7 +213,10 @@ appcast_path.write_text(rebuilt, encoding="utf-8")
 PY
 
 if command -v xmllint >/dev/null 2>&1; then
-    xmllint --noout "$APPCAST_FILE"
+    xmllint --noout "$APPCAST_FILE" || {
+        echo "错误: appcast.xml XML 校验失败，已中止发布。"
+        exit 1
+    }
     echo "appcast.xml 校验通过"
 fi
 

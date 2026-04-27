@@ -67,11 +67,12 @@ gh run list --limit 5
 
 - `.github/workflows/release.yml` 是手动 `workflow_dispatch` 兜底，不再由 tag push 自动发布，避免本地流程与 Actions 同时写 Release / appcast。
 - 如果手动 workflow 生成 appcast，必须先 snapshot，再 restore dirty appcast，切到最新默认分支后重新应用 snapshot 再 commit。
-- 正常发布时，`appcast.xml` 的唯一写入者应是本地终端流程。
+- 正常发布时，`appcast.xml` 只能有一个写入者。优先使用本地终端流程；如果本机没有 Sparkle 私钥，则让手动 workflow 使用 `SPARKLE_PRIVATE_KEY` secret 写入。
 
 ## Sparkle 关键校验
 
 - `SUFeedURL` 应指向 `https://raw.githubusercontent.com/ShawnRn/LiquidConvert/main/appcast.xml`。
 - `SUPublicEDKey` 必须与本地/Actions 使用的 EdDSA 私钥匹配。
 - `release.sh` 必须优先下载 GitHub Release 上的远端 DMG，并以远端字节生成 `length` 与 `sparkle:edSignature`。
+- `release.sh` 必须在 `sign_update` 失败、输出为空、输出含 `ERROR`、或 `xmllint` 失败时立即退出。绝不能把签名错误文本写入 `sparkle:edSignature`。
 - 每个版本的 appcast item 必须包含两个 enclosure：`sparkle:nativeArchitecture="arm64"` 与 `"x86_64"`。

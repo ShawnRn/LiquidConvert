@@ -37,6 +37,8 @@ gh release create "v$VERSION" "releases/LiquidConvert_${VERSION}_arm64.dmg" "rel
 ### 第四步：用远端资产生成 Sparkle appcast
 GitHub Release 创建并确认两个 DMG 都能下载后，再调用发布脚本生成 `appcast.xml`。该脚本会优先重新下载 GitHub Release 上真实可被用户下载到的资产，并以远端字节生成 `length` 与 `sparkle:edSignature`。
 
+如果本机没有 `SPARKLE_PRIVATE_KEY` 或 Sparkle Keychain 私钥，不要继续生成本地 appcast。先确认 `release.sh` 会在签名失败时退出，再手动触发 GitHub `Release` workflow 并勾选 `update_appcast`，让 Actions 使用仓库 secret 生成 appcast。
+
 // turbo
 ```bash
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/release.sh "$VERSION"
@@ -62,3 +64,4 @@ curl -I "https://github.com/ShawnRn/LiquidConvert/releases/download/v$VERSION/Li
 ```
 
 确认 raw `appcast.xml` 顶部 `<sparkle:shortVersionString>`、`<sparkle:version>`、两个 DMG URL、`length`、`sparkle:edSignature` 都对应本次 GitHub Release 后，应用端就能够通过“检查更新”接收到双架构更新包。
+如果 `sparkle:edSignature` 里出现 `ERROR`、`Signing key not found` 或 XML 无法通过 `xmllint`，必须视为发布失败，禁止提交或推送该 appcast。
