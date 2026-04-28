@@ -45,8 +45,10 @@ final class AIDocumentExtractViewModel: ObservableObject {
     @Published var isPreparingRuntime = false
     @Published var isExtracting = false
     @Published var globalMessage = "支持 PDF、Word、Excel、PPT、HTML、文本、图片与网页链接，图片会直接 OCR。"
+    @Published var historyRecords: [AIDocumentHistoryRecord] = []
 
     private let runtime = ManagedMarkItDownRuntime.shared
+    private let historyManager = AIDocumentExtractHistoryManager.shared
 
     var selectedItem: AIDocumentExtractItem? {
         guard let selectedItemID else { return nil }
@@ -94,6 +96,44 @@ final class AIDocumentExtractViewModel: ObservableObject {
             } catch {
                 runtimeStatus = "环境准备失败"
                 globalMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func loadHistory() {
+        Task {
+            let records = await historyManager.loadHistory()
+            await MainActor.run {
+                self.historyRecords = records
+            }
+        }
+    }
+
+    func clearHistory() {
+        Task {
+            await historyManager.clearHistory()
+            await MainActor.run {
+                self.historyRecords = []
+            }
+        }
+    }
+
+    private func saveToHistory(item: AIDocumentExtractItem, markdown: String) {
+        let title = suggestedTitles[item.id]
+            ?? markdownTitle(from: markdown)
+            ?? item.title
+        let record = AIDocumentHistoryRecord(
+            id: UUID(),
+            title: title,
+            sourceDisplayName: item.source.displayName,
+            sourceDetailText: item.source.detailText,
+            markdown: markdown,
+            date: Date()
+        )
+        Task {
+            await historyManager.saveRecord(record)
+            await MainActor.run {
+                self.historyRecords.insert(record, at: 0)
             }
         }
     }
@@ -289,6 +329,7 @@ final class AIDocumentExtractViewModel: ObservableObject {
                     itemStatuses[item.id] = "提取完成"
                     runtimeStatus = "运行环境已就绪"
                     globalMessage = "已完成 \(item.title) 的 Markdown 提取。"
+                    saveToHistory(item: item, markdown: result.markdown)
                 } catch {
                     itemStatuses[item.id] = "提取失败"
                     let message = error.localizedDescription
@@ -352,6 +393,8 @@ struct AIDocumentExtractView: View {
     @State private var isDropTargeted = false
     @State private var showQuickAddSheet = false
     @State private var showResultSheet = false
+    @State private var showHistoryPopover = false
+    @State private var selectedHistoryRecord: AIDocumentHistoryRecord?
 
     var body: some View {
         GeometryReader { geometry in
@@ -399,47 +442,69 @@ struct AIDocumentExtractView: View {
             guard newValue == "提取完成" || newValue == "提取失败" else { return }
             showResultSheet = true
         }
+        .sheet(item: $selectedHistoryRecord) { record in
+            historyDetailSheet(record: record)
+        }
         .task {
             viewModel.prepareRuntimeIfNeeded()
+            viewModel.loadHistory()
         }
     }
 
     private var headerSection: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.12))
-                    .frame(width: 80, height: 80)
-                    .blur(radius: 10)
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.accentColor.opacity(0.12))
+                        .frame(width: 80, height: 80)
+                        .blur(radius: 10)
 
-                Image(systemName: "doc.viewfinder.fill")
-                    .font(.system(size: 44, weight: .thin))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.blue, .cyan],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                    Image(systemName: "doc.viewfinder.fill")
+                        .font(.system(size: 44, weight: .thin))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.blue, .cyan],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
-                    .symbolEffect(.breathe, options: .repeating, isActive: viewModel.isExtracting)
+                        .symbolEffect(.breathe, options: .repeating, isActive: viewModel.isExtracting)
+                }
+
+                VStack(spacing: 6) {
+                    Text("AI 文档提取")
+                        .font(.title2.weight(.bold))
+
+                    Text("点击读取 clipboard，或直接拖入支持的文件格式开始提取。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    runtimeStatusPill
+
+                    Text(viewModel.globalMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                }
             }
+            .frame(maxWidth: .infinity)
 
-            VStack(spacing: 6) {
-                Text("AI 文档提取")
-                    .font(.title2.weight(.bold))
-
-                Text("点击读取 clipboard，或直接拖入支持的文件格式开始提取。")
-                    .font(.subheadline)
+            Button {
+                viewModel.loadHistory()
+                showHistoryPopover.toggle()
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-
-                runtimeStatusPill
-
-                Text(viewModel.globalMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(.primary.opacity(0.06)))
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $showHistoryPopover) {
+                historySheetContent
             }
         }
     }
@@ -643,6 +708,7 @@ struct AIDocumentExtractView: View {
             HStack(spacing: 10) {
                 Button("复制 Markdown") {
                     viewModel.copySelectedMarkdown()
+                    showResultSheet = false
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(!viewModel.canExportSelection)
@@ -742,6 +808,162 @@ struct AIDocumentExtractView: View {
 
     private var cardShadowColor: Color {
         Color.black.opacity(colorScheme == .dark ? 0.32 : 0.08)
+    }
+
+    // MARK: - History
+
+    private var historySheetContent: some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("提取历史")
+                        .font(.title3.weight(.bold))
+                    Text("成功提取的结果会自动保存 24 小时")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !viewModel.historyRecords.isEmpty {
+                    Button("清空全部") {
+                        viewModel.clearHistory()
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                    .buttonStyle(.plain)
+                }
+                Button("完成") {
+                    showHistoryPopover = false
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(24)
+
+            Divider()
+
+            if viewModel.historyRecords.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "tray")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.tertiary)
+                    Text("暂无提取记录")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    Text("提取完成后，结果会自动保存在这里")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(viewModel.historyRecords) { record in
+                            historyRow(record: record)
+                        }
+                    }
+                    .padding(16)
+                }
+            }
+        }
+        .frame(width: 620, height: 480)
+    }
+
+    private func historyRow(record: AIDocumentHistoryRecord) -> some View {
+        Button {
+            showHistoryPopover = false
+            selectedHistoryRecord = record
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.blue)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(record.title)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                        .foregroundStyle(.primary)
+                    Text(record.sourceDisplayName)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Text(record.date, style: .relative)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func historyDetailSheet(record: AIDocumentHistoryRecord) -> some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(record.title)
+                        .font(.title3.weight(.bold))
+
+                    Text(record.sourceDisplayName)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    Text(record.date, format: .dateTime.year().month().day().hour().minute())
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Spacer()
+
+                Button("完成") {
+                    selectedHistoryRecord = nil
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(24)
+
+            Divider()
+
+            HTMLPreviewView(html: EtherpadExporter.buildRenderedHTML(from: record.markdown))
+                .background(Color(nsColor: .textBackgroundColor))
+                .frame(minHeight: 420)
+
+            Divider()
+
+            HStack(spacing: 10) {
+                Button("复制 Markdown") {
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.setString(record.markdown, forType: .string)
+                    selectedHistoryRecord = nil
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("导出 .md") {
+                    let panel = NSSavePanel()
+                    panel.canCreateDirectories = true
+                    panel.allowedContentTypes = [.plainText]
+                    let safeName = record.title
+                        .components(separatedBy: CharacterSet(charactersIn: "/:*?\"<>|\\\n\r\t"))
+                        .joined(separator: "_")
+                    panel.nameFieldStringValue = (safeName.isEmpty ? "Extracted" : safeName) + ".md"
+                    panel.title = "导出 Markdown"
+                    panel.prompt = "导出"
+                    guard panel.runModal() == .OK, let url = panel.url else { return }
+                    try? record.markdown.write(to: url, atomically: true, encoding: .utf8)
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+            }
+            .padding(20)
+        }
+        .frame(width: 760, height: 620)
     }
 }
 

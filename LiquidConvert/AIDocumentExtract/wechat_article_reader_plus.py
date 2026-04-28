@@ -40,6 +40,15 @@ def extract_images(page: str) -> list:
             if u not in seen and 'qpic.cn' in u:
                 seen.add(u)
                 urls.append(u)
+                
+    # Extract WeChat Picture Post (图文动态) images
+    pic_post_imgs = re.findall(r"cdn_url:\s*(?:JsDecode\()?['\"](https?://[^'\"]+(?:qpic\.cn)[^'\"]*)['\"]", page)
+    for u in pic_post_imgs:
+        u = html.unescape(u).replace('&amp;', '&').replace('\\x26amp;', '&').replace('\\x26', '&').strip()
+        if u not in seen:
+            seen.add(u)
+            urls.append(u)
+            
     return urls
 
 
@@ -375,6 +384,12 @@ def main() -> None:
             article = extract_article(args.url)
             page = fetch_html(args.url)
             imgs = extract_images(page)
+            
+            # For WeChat Image Posts, images are not embedded in article['markdown']
+            # We append them manually so integrate_ocr can replace them with text
+            for img_url in imgs:
+                if img_url not in article['markdown']:
+                    article['markdown'] += f"\n\n![]({img_url})\n"
             
         article['ocr_used'] = False
         density = text_density(article['markdown'], len(imgs))
