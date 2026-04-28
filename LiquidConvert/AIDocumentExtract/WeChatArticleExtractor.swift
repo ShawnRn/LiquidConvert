@@ -14,13 +14,21 @@ enum WeChatArticleExtractor {
     ]
 
     nonisolated static func canHandle(_ url: URL) -> Bool {
-        (url.host ?? "").contains("mp.weixin.qq.com")
+        let host = url.host ?? ""
+        return host.contains("mp.weixin.qq.com") || host.contains("weibo.com") || host.contains("weibo.cn")
     }
 
     static func extract(
         from url: URL,
         progress: (@Sendable (String) -> Void)? = nil
     ) async throws -> AIDocumentExtractionResult {
+        if (url.host ?? "").contains("weibo.com") || (url.host ?? "").contains("weibo.cn") {
+            if let result = try? await extractWithBundledWXScript(url: url) {
+                return result
+            }
+            throw NSError(domain: "WeChatArticleExtractor", code: -1, userInfo: [NSLocalizedDescriptionKey: "Weibo 提取失败。"])
+        }
+
         var article: ParsedArticle
         do {
             let html = try await fetchHTML(from: url)

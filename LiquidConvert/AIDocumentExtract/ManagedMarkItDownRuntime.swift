@@ -132,7 +132,11 @@ actor ManagedMarkItDownRuntime {
 
         if case .link(let url) = source {
             if WeChatArticleExtractor.canHandle(url) {
-                progress?("正在提取公众号正文…")
+                if url.host?.lowercased().contains("weibo") == true {
+                    progress?("正在提取微博正文…")
+                } else {
+                    progress?("正在提取公众号正文…")
+                }
                 return try await WeChatArticleExtractor.extract(from: url, progress: progress)
             }
 

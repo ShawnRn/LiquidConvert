@@ -1,0 +1,64 @@
+import Cocoa
+import WebKit
+
+class HeadlessBrowser: NSObject, WKNavigationDelegate {
+    let webView: WKWebView
+    let url: URL
+    
+    init(url: URL) {
+        self.url = url
+        let config = WKWebViewConfiguration()
+        self.webView = WKWebView(frame: .zero, configuration: config)
+        super.init()
+        self.webView.navigationDelegate = self
+    }
+    
+    func start() {
+        let req = URLRequest(url: url)
+        webView.load(req)
+    }
+    
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // Wait 3.0 seconds for dynamic content to load and anti-scraping redirects to finish
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            webView.evaluateJavaScript("document.documentElement.outerHTML") { result, error in
+                if let html = result as? String {
+                    print(html)
+                    exit(0)
+                } else {
+                    print("Error: \(String(describing: error))")
+                    exit(1)
+                }
+            }
+        }
+    }
+    
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        print("Failed: \(error)")
+        exit(1)
+    }
+}
+
+let args = CommandLine.arguments
+if args.count < 2 {
+    print("Usage: swift weibo_fetch.swift <url>")
+    exit(1)
+}
+
+let urlString = args[1]
+guard let url = URL(string: urlString) else {
+    print("Invalid URL")
+    exit(1)
+}
+
+let app = NSApplication.shared
+let browser = HeadlessBrowser(url: url)
+browser.start()
+
+// Set a global timeout to avoid hanging forever
+DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
+    print("Timeout fetching Weibo URL")
+    exit(1)
+}
+
+app.run()

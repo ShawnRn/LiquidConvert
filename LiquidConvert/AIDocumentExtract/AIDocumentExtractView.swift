@@ -342,7 +342,6 @@ private final class AIDocumentExtractionProgressSink: @unchecked Sendable {
         Task { @MainActor [weak viewModel, itemID] in
             viewModel?.itemStatuses[itemID] = message
             viewModel?.runtimeStatus = message
-            viewModel?.globalMessage = message
         }
     }
 }
@@ -502,7 +501,6 @@ struct AIDocumentExtractView: View {
             guard !viewModel.isExtracting else { return }
             viewModel.addClipboardLinkAndExtract()
         }
-        .keyboardShortcut("v", modifiers: .command)
         .onDrop(of: AIDocumentFileTypes.importable + [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
     }
 
@@ -669,15 +667,22 @@ struct AIDocumentExtractView: View {
     }
 
     private var shortcutBadge: some View {
-        HStack(spacing: 0) {
-            Image(systemName: "command")
-            Text("V 快速粘贴")
+        Button(action: {
+            guard !viewModel.isExtracting else { return }
+            viewModel.addClipboardLinkAndExtract()
+        }) {
+            HStack(spacing: 0) {
+                Image(systemName: "command")
+                Text("V 快速粘贴")
+            }
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(.primary.opacity(0.05)))
         }
-        .font(.system(size: 11, weight: .medium))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(Capsule().fill(.primary.opacity(0.05)))
+        .buttonStyle(.plain)
+        .keyboardShortcut("v", modifiers: .command)
     }
 
     private var currentHeroIcon: String {
@@ -706,7 +711,7 @@ struct AIDocumentExtractView: View {
 
     private var primaryActionSubtitle: String {
         if viewModel.isExtracting {
-            return viewModel.globalMessage
+            return "正在解析并提取内容，此过程在本地运行…"
         }
         return "自动解析剪贴板中的网页链接，拖入文件也会直接开始转换。"
     }
@@ -796,7 +801,7 @@ private struct AIDocumentQueueRow: View {
         switch item.source {
         case .file:
             return "doc.text"
-        case .link(let url) where (url.host ?? "").contains("mp.weixin.qq.com"):
+        case .link(let url) where (url.host ?? "").contains("mp.weixin.qq.com") || (url.host ?? "").contains("weibo.com") || (url.host ?? "").contains("weibo.cn"):
             return "text.page.badge.magnifyingglass"
         case .link:
             return "globe"

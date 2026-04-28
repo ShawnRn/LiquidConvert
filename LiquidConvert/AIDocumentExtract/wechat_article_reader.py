@@ -128,6 +128,29 @@ def extract_article(url: str) -> dict:
     body = re.sub(r'<br\s*/?>', '\n', body, flags=re.I)
     body = re.sub(r'</p>|</section>|</li>|</h\d>|</div>', '\n', body, flags=re.I)
     body = re.sub(r'<li[^>]*>', '- ', body, flags=re.I)
+
+    # Convert img tags to markdown
+    def img_replacer(match):
+        attrs = match.group(1)
+        src = ''
+        m_src = re.search(r'data-src="([^"]+)"', attrs, re.I)
+        if not m_src:
+            m_src = re.search(r'data-croporisrc="([^"]+)"', attrs, re.I)
+        if not m_src:
+            m_src = re.search(r'src="(https?://[^"]+qpic\.cn[^"]*)"', attrs, re.I)
+        
+        if m_src:
+            src = m_src.group(1)
+            src = html.unescape(src).replace('&amp;', '&').strip()
+            if src.startswith('//'):
+                src = 'https:' + src
+            if not src.startswith('http'):
+                src = urllib.parse.urljoin('https://mp.weixin.qq.com/', src)
+            return f'\n\n![]({src})\n\n'
+        return '\n\n![Image]()\n\n'
+
+    body = re.sub(r'<img([^>]+)>', img_replacer, body, flags=re.I)
+    
     body = re.sub(r'<[^>]+>', '', body)
     body = html.unescape(body).replace('\xa0', ' ')
 
