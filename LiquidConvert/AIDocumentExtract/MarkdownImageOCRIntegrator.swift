@@ -29,11 +29,18 @@ enum MarkdownImageOCRIntegrator {
         let sourceDirectory = sourceDirectory(for: source)
         var archiveIndex = 0
         var insertions: [Int: [String]] = [:]
+        var failedCount = 0
 
         progress?("正在 OCR 文档图片 0/\(references.count)…")
 
         for (referenceIndex, reference) in references.enumerated() {
-            progress?("正在 OCR 文档图片 \(referenceIndex + 1)/\(references.count)…")
+            let statusSuffix = failedCount > 0 ? "（\(failedCount) 张失败）" : ""
+            progress?("正在 OCR 文档图片 \(referenceIndex + 1)/\(references.count)…\(statusSuffix)")
+
+            // Throttle requests to mmbiz CDN to avoid rate limiting.
+            if referenceIndex > 0, isMmbizDestination(reference.destination) {
+                try? await Task.sleep(for: .milliseconds(350))
+            }
 
             do {
                 guard let image = try await imageForReference(
@@ -56,12 +63,17 @@ enum MarkdownImageOCRIntegrator {
                     insertions[reference.lineIndex, default: []].append(block)
                 }
             } catch {
+                failedCount += 1
                 print("[AI Document OCR] image \(referenceIndex + 1) failed: \(error.localizedDescription)")
             }
         }
 
         guard !insertions.isEmpty else { return markdown }
         return insertBlocks(insertions, into: markdown)
+    }
+
+    private static func isMmbizDestination(_ destination: String) -> Bool {
+        destination.contains("mmbiz") || destination.contains("qpic.cn")
     }
 
     private static func imageForReference(
@@ -140,6 +152,8 @@ enum MarkdownImageOCRIntegrator {
             }
         }
 
+        let isMmbiz = (url.host ?? "").contains("mmbiz")
+
         var lastError: Error?
         for candidate in candidates {
             for attempt in 0..<3 {
@@ -147,7 +161,7 @@ enum MarkdownImageOCRIntegrator {
                     var request = URLRequest(url: candidate)
                     request.timeoutInterval = 30
                     request.setValue(genericUserAgent, forHTTPHeaderField: "User-Agent")
-                    if (candidate.host ?? "").contains("mmbiz") {
+                    if isMmbiz {
                         request.setValue("https://mp.weixin.qq.com/", forHTTPHeaderField: "Referer")
                     }
 
@@ -156,13 +170,34 @@ enum MarkdownImageOCRIntegrator {
                         throw NSError(
                             domain: "MarkdownImageOCRIntegrator",
                             code: http.statusCode,
-                            userInfo: [NSLocalizedDescriptionKey: "图片下载失败（HTTP \(http.statusCode)）。"]
+                            userInfo: [NSLocalizedDescriptionKey: "图片下载失败（HTTP \(http.statusCode)，\(candidate.lastPathComponent)）。"]
                         )
                     }
+
+                    // Validate that the response is actual image data, not an HTML error page.
+                    guard data.count > 200 else {
+                        throw NSError(
+                            domain: "MarkdownImageOCRIntegrator",
+                            code: -21,
+                            userInfo: [NSLocalizedDescriptionKey: "图片数据过小（\(data.count) bytes），可能被 CDN 拒绝。"]
+                        )
+                    }
+
+                    if looksLikeHTMLErrorPage(data) {
+                        throw NSError(
+                            domain: "MarkdownImageOCRIntegrator",
+                            code: -22,
+                            userInfo: [NSLocalizedDescriptionKey: "CDN 返回了 HTML 错误页而非图片数据。"]
+                        )
+                    }
+
+                    print("[AI Document OCR] downloaded \(candidate.lastPathComponent): \(data.count) bytes")
                     return data
                 } catch {
                     lastError = error
-                    try await Task.sleep(for: .milliseconds(400 * (attempt + 1)))
+                    // Increase backoff for mmbiz CDN to respect rate limits.
+                    let delay = isMmbiz ? 800 * (attempt + 1) : 400 * (attempt + 1)
+                    try await Task.sleep(for: .milliseconds(delay))
                 }
             }
         }
@@ -174,20 +209,30 @@ enum MarkdownImageOCRIntegrator {
         )
     }
 
+    /// Heuristic check: if the first few bytes look like HTML rather than image data.
+    private static func looksLikeHTMLErrorPage(_ data: Data) -> Bool {
+        guard data.count > 16 else { return false }
+        let prefix = data.prefix(64)
+        guard let text = String(data: prefix, encoding: .utf8)?.lowercased() else { return false }
+        return text.contains("<!doctype") || text.contains("<html") || text.contains("<head")
+    }
+
     private static func imageReferences(in markdown: String) -> [ImageReference] {
         guard let regex = try? NSRegularExpression(pattern: imagePattern) else { return [] }
 
-        return markdown.components(separatedBy: .newlines).enumerated().compactMap { lineIndex, line in
+        // Use matches (not firstMatch) to extract ALL image references per line.
+        // htmlDecoded can collapse newlines, merging multiple ![image](...) onto one line.
+        var results: [ImageReference] = []
+        for (lineIndex, line) in markdown.components(separatedBy: .newlines).enumerated() {
             let range = NSRange(line.startIndex..<line.endIndex, in: line)
-            guard let match = regex.firstMatch(in: line, range: range),
-                  match.numberOfRanges > 1,
-                  let capture = Range(match.range(at: 1), in: line)
-            else {
-                return nil
+            for match in regex.matches(in: line, range: range) {
+                guard match.numberOfRanges > 1,
+                      let capture = Range(match.range(at: 1), in: line)
+                else { continue }
+                results.append(ImageReference(lineIndex: lineIndex, destination: String(line[capture])))
             }
-
-            return ImageReference(lineIndex: lineIndex, destination: String(line[capture]))
         }
+        return results
     }
 
     private static func insertBlocks(_ insertions: [Int: [String]], into markdown: String) -> String {

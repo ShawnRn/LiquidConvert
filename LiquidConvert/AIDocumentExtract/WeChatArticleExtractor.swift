@@ -384,7 +384,10 @@ enum WeChatArticleExtractor {
             text = replacing(pattern: replacement.pattern, in: text, with: replacement.template)
         }
 
-        text = htmlDecoded(text)
+        // Use lightweight HTML entity decoding that preserves line breaks.
+        // NSAttributedString(.html) collapses newlines, merging separate ![image]
+        // lines and causing downstream OCR to miss images.
+        text = lightHTMLEntityDecode(text)
             .replacingOccurrences(of: "\u{00A0}", with: " ")
             .replacingOccurrences(of: "\r\n", with: "\n")
 
@@ -499,6 +502,59 @@ enum WeChatArticleExtractor {
         }
 
         return attributed.string
+    }
+
+    /// Lightweight HTML entity decoder that preserves line breaks.
+    /// Unlike `htmlDecoded` (NSAttributedString-based), this does not reinterpret
+    /// the text as an HTML document, so newlines and whitespace structure are kept intact.
+    private static func lightHTMLEntityDecode(_ text: String) -> String {
+        var result = text
+        // Named entities
+        result = result
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&apos;", with: "'")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&ndash;", with: "–")
+            .replacingOccurrences(of: "&mdash;", with: "—")
+            .replacingOccurrences(of: "&hellip;", with: "…")
+            .replacingOccurrences(of: "&lsquo;", with: "\u{2018}")
+            .replacingOccurrences(of: "&rsquo;", with: "\u{2019}")
+            .replacingOccurrences(of: "&ldquo;", with: "\u{201C}")
+            .replacingOccurrences(of: "&rdquo;", with: "\u{201D}")
+            .replacingOccurrences(of: "&bull;", with: "•")
+            .replacingOccurrences(of: "&middot;", with: "·")
+            .replacingOccurrences(of: "&copy;", with: "©")
+            .replacingOccurrences(of: "&reg;", with: "®")
+            .replacingOccurrences(of: "&trade;", with: "™")
+            .replacingOccurrences(of: "&times;", with: "×")
+            .replacingOccurrences(of: "&divide;", with: "÷")
+
+        // Numeric character references: &#123; or &#x1F; (decimal or hex)
+        if let numericPattern = try? NSRegularExpression(pattern: #"&#(x?)([0-9a-fA-F]+);"#) {
+            let range = NSRange(result.startIndex..<result.endIndex, in: result)
+            let matches = numericPattern.matches(in: result, range: range).reversed()
+            for match in matches {
+                guard match.numberOfRanges > 2,
+                      let fullRange = Range(match.range, in: result),
+                      let hexFlagRange = Range(match.range(at: 1), in: result),
+                      let codeRange = Range(match.range(at: 2), in: result)
+                else { continue }
+
+                let isHex = !result[hexFlagRange].isEmpty
+                let codeString = String(result[codeRange])
+                guard let codePoint = UInt32(codeString, radix: isHex ? 16 : 10),
+                      let scalar = Unicode.Scalar(codePoint)
+                else { continue }
+
+                result.replaceSubrange(fullRange, with: String(scalar))
+            }
+        }
+
+        return result
     }
 
     fileprivate struct ParsedArticle {
