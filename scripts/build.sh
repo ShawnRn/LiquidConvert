@@ -25,7 +25,7 @@ create_dmg_with_layout() {
     dmg_dir=$(dirname "$dmg_path")
     local styled_dmg_path="${dmg_dir}/${PROJECT_NAME} ${MARKETING_VERSION}.dmg"
     local staging_dir
-    staging_dir=$(mktemp -d "${ROOT}/.build/dmg-${target_arch}.XXXXXX")
+    staging_dir=$(mktemp -d "${TMPDIR:-/tmp}/liquidconvert-dmg-${target_arch}.XXXXXX")
     local fallback_volume
     fallback_volume="${staging_dir}/${PROJECT_NAME}"
 
@@ -35,7 +35,11 @@ create_dmg_with_layout() {
     trap cleanup_dmg_staging RETURN
 
     mkdir -p "$staging_dir"
-    cp -R "$app_bundle" "${staging_dir}/${display_app_name}"
+    ditto --noextattr --norsrc "$app_bundle" "${staging_dir}/${display_app_name}"
+    xattr -cr "${staging_dir}/${display_app_name}" || true
+    find -L "${staging_dir}/${display_app_name}" -xattrname com.apple.FinderInfo \
+        -exec xattr -d -s com.apple.FinderInfo {} \; \
+        -exec xattr -d com.apple.FinderInfo {} \; 2>/dev/null || true
 
     if command -v create-dmg >/dev/null 2>&1; then
         echo "==> Creating styled DMG with create-dmg for ${target_arch}..."
