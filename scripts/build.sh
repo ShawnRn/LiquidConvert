@@ -150,6 +150,9 @@ for TARGET_ARCH in "${TARGET_ARCHS[@]}"; do
 
     # 3. Post-processing (Signing)
     SIGNING_IDENTITY="-"
+    echo "==> Removing extended attributes before signing for ${TARGET_ARCH}..."
+    xattr -cr "${ARCH_APP_BUNDLE}" || true
+
     echo "==> Signing app bundle (Ad-hoc) for ${TARGET_ARCH}..."
     codesign --force --deep --sign "${SIGNING_IDENTITY}" "${ARCH_APP_BUNDLE}"
 
