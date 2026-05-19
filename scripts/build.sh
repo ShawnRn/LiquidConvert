@@ -152,6 +152,9 @@ for TARGET_ARCH in "${TARGET_ARCHS[@]}"; do
     SIGNING_IDENTITY="-"
     echo "==> Removing extended attributes before signing for ${TARGET_ARCH}..."
     xattr -cr "${ARCH_APP_BUNDLE}" || true
+    find -L "${ARCH_APP_BUNDLE}" -xattrname com.apple.FinderInfo \
+        -exec xattr -d -s com.apple.FinderInfo {} \; \
+        -exec xattr -d com.apple.FinderInfo {} \; 2>/dev/null || true
 
     echo "==> Signing app bundle (Ad-hoc) for ${TARGET_ARCH}..."
     codesign --force --deep --sign "${SIGNING_IDENTITY}" "${ARCH_APP_BUNDLE}"
