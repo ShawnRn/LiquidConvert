@@ -22,9 +22,9 @@ LiquidConvert 使用**语义化版本号** (Semantic Versioning) 系统：
 
 ### 当前版本
 
-- **Marketing Version**: `1.0.0`
-- **Build Number**: `1`
-- **完整版本**: `1.0.0 (1)`
+- **Marketing Version**: `3.2.1`
+- **Build Number**: `2026051901`
+- **完整版本**: `3.2.1 (2026051901)`
 
 ---
 
@@ -84,6 +84,12 @@ buildNumber=$(($buildNumber + 1))
 ---
 
 ## 版本历史
+
+### v3.2.1 (Build 2026051901) - 2026-05-19
+#### 修复与集成
+- ✨ **新增 LiquidConvert CLI**：App 首次启动会检测 `liquidconvert` 命令是否已安装，未安装时提示安装，方便 Codex 或终端直接把 URL、PDF、Office、HTML、文本和图片转换为 Markdown。
+- 🐞 **修复 CLI 网页提取崩溃**：命令行模式不再初始化 `WKWebView`，URL 提取改走 MarkItDown 安全路径，避免无 UI 进程触发 WebKit 崩溃。
+- 🔧 **补强自动化工作流**：CLI 支持 `--output`、`--cli-status` 与 `--install-cli`，便于外部自动化检测和调用。
 
 ### v3.1.9 (Build 2026042703) - 2026-04-27
 #### 新功能与优化

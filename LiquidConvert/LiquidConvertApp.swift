@@ -135,6 +135,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
         // 设置代理
         UNUserNotificationCenter.current().delegate = self
+
+        LiquidConvertCLIInstaller.promptForInstallIfNeeded()
     }
 
     // 🔥 关键：让 App 在前台也能显示通知
@@ -294,6 +296,10 @@ struct LiquidConvertApp: App {
     @StateObject private var appState = AppState()
 
     @AppStorage("app_appearance") private var appearance: AppAppearance = .system
+
+    init() {
+        AIDocumentCLI.runIfNeededAndExit(arguments: CommandLine.arguments)
+    }
 
     var body: some Scene {
         Window("LiquidConvert", id: "main") {

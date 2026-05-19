@@ -130,7 +130,7 @@ actor ManagedMarkItDownRuntime {
             )
         }
 
-        if case .link(let url) = source {
+        if case .link(let url) = source, !AIDocumentRuntimeMode.isCLI {
             if WeChatArticleExtractor.canHandle(url) {
                 if url.host?.lowercased().contains("weibo") == true {
                     progress?("正在提取微博正文…")
@@ -151,7 +151,11 @@ actor ManagedMarkItDownRuntime {
         }
 
         let runtime = try await prepare(progress: progress)
-        progress?("正在调用 MarkItDown 提取内容…")
+        if AIDocumentRuntimeMode.isCLI {
+            progress?("正在调用 MarkItDown 提取内容（CLI 模式跳过 WebKit 渲染）…")
+        } else {
+            progress?("正在调用 MarkItDown 提取内容…")
+        }
 
         let argument: String
         switch source {
