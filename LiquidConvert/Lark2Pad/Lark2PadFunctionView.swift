@@ -21,6 +21,10 @@ struct Lark2PadFunctionView: View {
     // Animation Namespace
     @Namespace private var animation
 
+    @State private var isDraggingOver = false
+    @State private var showImporterSheet = false
+    @State private var isHoveringBrowse = false
+
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
@@ -43,7 +47,12 @@ struct Lark2PadFunctionView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .zIndex(100)
             }
+
+
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .contentShape(Rectangle())
         .task {
             await coordinator.prepareEngine()
         }
@@ -88,6 +97,28 @@ struct Lark2PadFunctionView: View {
                 showToast("保存失败: \(error.localizedDescription)", isError: true)
             }
         }
+
+        .fileImporter(
+            isPresented: $showImporterSheet,
+            allowedContentTypes: [UTType(filenameExtension: "md") ?? .plainText, UTType(filenameExtension: "markdown") ?? .plainText],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                handleImportedURLs(urls)
+            case .failure(let error):
+                showToast("导入失败: \(error.localizedDescription)", isError: true)
+            }
+        }
+        .background(
+            Button(action: handlePaste) {
+                EmptyView()
+            }
+            .keyboardShortcut("v", modifiers: .command)
+            .buttonStyle(.plain)
+            .allowsHitTesting(false)
+            .frame(width: 0, height: 0)
+        )
     }
 
     // MARK: - Header
@@ -162,53 +193,102 @@ struct Lark2PadFunctionView: View {
     // MARK: - Idle (Paste Zone)
 
     private var idleView: some View {
-        Button {
-            handlePaste()
-        } label: {
+        VStack(spacing: 20) {
             VStack(spacing: 20) {
+                Spacer()
+                
                 ZStack {
                     Circle()
                         .fill(.secondary.opacity(0.05))
                         .frame(width: 100, height: 100)
                     
-                    Image(systemName: "doc.on.clipboard")
+                    Image(systemName: isDraggingOver ? "arrow.down.doc.fill" : "doc.on.clipboard")
                         .font(.system(size: 48, weight: .ultraLight))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(isDraggingOver ? .blue : .secondary)
+                        .scaleEffect(isDraggingOver ? 1.15 : 1.0)
+                        .animation(.spring(response: 0.3), value: isDraggingOver)
                         .symbolEffect(.pulse, options: .repeating)
                 }
 
                 VStack(spacing: 8) {
-                    Text("点击读取剪贴板")
+                    Text("点击读取剪贴板 或 拖入 .md 文件")
                         .font(.headline)
+                        .foregroundStyle(isDraggingOver ? .blue : .primary)
                     
-                    Text("自动解析剪贴板中的飞书富文本内容及图片")
+                    Text("自动解析剪贴板富文本，或处理本地 Markdown 文件及图片")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
 
-                HStack(spacing: 0) {
-                    Image(systemName: "command")
-                    Text("V 快速粘贴")
+                HStack(spacing: 12) {
+                    HStack(spacing: 0) {
+                        Image(systemName: "command")
+                        Text("V 快速粘贴")
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(.primary.opacity(0.05)))
+                    
+                    Label("支持拖入 .md 文件", systemImage: "tray.and.arrow.down")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(.primary.opacity(0.05)))
                 }
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(.primary.opacity(0.05)))
+                
+                Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .background {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.4))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .strokeBorder(.primary.opacity(0.05), lineWidth: 1)
-                    }
+            
+            // 浏览本地文件按钮
+            Button(action: { showImporterSheet = true }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("浏览本地文件")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .foregroundStyle(isHoveringBrowse ? .white : .secondary)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 10)
+                .background {
+                    Capsule()
+                        .fill(isHoveringBrowse ? Color.blue : Color.primary.opacity(0.06))
+                }
+                .scaleEffect(isHoveringBrowse ? 1.03 : 1.0)
+                .animation(.easeOut(duration: 0.2), value: isHoveringBrowse)
             }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                isHoveringBrowse = hovering
+            }
+            .padding(.bottom, 20)
         }
-        .buttonStyle(PlainButtonStyle())
-        .keyboardShortcut("v", modifiers: .command)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .background {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(isDraggingOver ? 0.6 : 0.4))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(
+                            isDraggingOver ? Color.blue : .primary.opacity(0.05),
+                            style: StrokeStyle(
+                                lineWidth: isDraggingOver ? 2 : 1,
+                                dash: isDraggingOver ? [6, 4] : []
+                            )
+                        )
+                }
+        }
+        .onTapGesture {
+            handlePaste()
+        }
+        .onDrop(of: [.fileURL], isTargeted: $isDraggingOver) { providers in
+            handleDrop(providers)
+        }
     }
 
     // MARK: - Processing
@@ -440,5 +520,56 @@ struct Lark2PadFunctionView: View {
         pb.clearContents()
         pb.setString(coordinator.markdownResult, forType: .string)
         showToast("Markdown 内容已复制！")
+    }
+
+    private func handleImportedURLs(_ urls: [URL]) {
+        let mdFiles = urls.filter { url in
+            let ext = url.pathExtension.lowercased()
+            return ext == "md" || ext == "markdown"
+        }
+        
+        guard let firstMdFile = mdFiles.first else {
+            showToast("请拖入 .md 或 .markdown 格式的 Markdown 文件", isError: true)
+            return
+        }
+        
+        Task {
+            let access = firstMdFile.startAccessingSecurityScopedResource()
+            defer {
+                if access {
+                    firstMdFile.stopAccessingSecurityScopedResource()
+                }
+            }
+            
+            do {
+                let content = try String(contentsOf: firstMdFile, encoding: .utf8)
+                let baseDir = firstMdFile.deletingLastPathComponent()
+                
+                await coordinator.convertMarkdown(
+                    content: content,
+                    baseDirectory: baseDir,
+                    autoUpload: autoUploadImages
+                )
+            } catch {
+                showToast("读取文件失败: \(error.localizedDescription)", isError: true)
+            }
+        }
+    }
+
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        Task {
+            var urls: [URL] = []
+            for provider in providers {
+                if let url = await provider.loadSafeURL() {
+                    urls.append(url)
+                }
+            }
+            await MainActor.run {
+                if !urls.isEmpty {
+                    handleImportedURLs(urls)
+                }
+            }
+        }
+        return true
     }
 }

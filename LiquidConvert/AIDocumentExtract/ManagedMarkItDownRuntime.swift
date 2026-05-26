@@ -130,8 +130,15 @@ actor ManagedMarkItDownRuntime {
             )
         }
 
-        if case .link(let url) = source, !AIDocumentRuntimeMode.isCLI {
-            if WeChatArticleExtractor.canHandle(url) {
+        if case .link(let url) = source, WeChatArticleExtractor.canHandle(url) {
+            if AIDocumentRuntimeMode.isCLI {
+                if url.host?.lowercased().contains("weibo") == true {
+                    progress?("正在提取微博正文（CLI 专用路径）…")
+                } else {
+                    progress?("正在提取公众号正文（CLI 专用路径）…")
+                }
+                return try await WeChatArticleExtractor.extractWithoutRendering(from: url, progress: progress)
+            } else {
                 if url.host?.lowercased().contains("weibo") == true {
                     progress?("正在提取微博正文…")
                 } else {
@@ -139,7 +146,9 @@ actor ManagedMarkItDownRuntime {
                 }
                 return try await WeChatArticleExtractor.extract(from: url, progress: progress)
             }
+        }
 
+        if case .link(let url) = source, !AIDocumentRuntimeMode.isCLI {
             if GenericWebArticleExtractor.canHandle(url), GenericWebArticleExtractor.shouldPreferOverMarkItDown(url) {
                 progress?("正在提取网页正文…")
                 do {

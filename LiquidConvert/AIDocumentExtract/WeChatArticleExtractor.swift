@@ -56,6 +56,38 @@ enum WeChatArticleExtractor {
         )
     }
 
+    static func extractWithoutRendering(
+        from url: URL,
+        progress: (@Sendable (String) -> Void)? = nil
+    ) async throws -> AIDocumentExtractionResult {
+        if (url.host ?? "").contains("weibo.com") || (url.host ?? "").contains("weibo.cn") {
+            if let result = try? await extractWithBundledWXScript(url: url) {
+                return result
+            }
+            throw NSError(domain: "WeChatArticleExtractor", code: -1, userInfo: [NSLocalizedDescriptionKey: "Weibo 提取失败。"])
+        }
+
+        do {
+            let html = try await fetchHTML(from: url)
+            let article = try parseArticle(from: html, url: url)
+            let markdown = await MarkdownImageOCRIntegrator.insertOCRIfNeeded(
+                into: article.markdownDocument,
+                source: .link(url),
+                progress: progress
+            )
+            return AIDocumentExtractionResult(
+                markdown: markdown,
+                source: .link(url),
+                suggestedTitle: article.title
+            )
+        } catch {
+            if let result = try? await extractWithBundledWXScript(url: url) {
+                return result
+            }
+            throw error
+        }
+    }
+
     fileprivate static func cleanRenderedText(_ text: String) -> String {
         text
             .components(separatedBy: .newlines)

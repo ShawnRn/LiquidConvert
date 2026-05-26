@@ -127,9 +127,13 @@ enum EtherpadExporter {
         return nil
     }
 
-    /// Parse inline styles like bold and italic.
+    /// Parse inline styles: images, links, bold, italic.
     private static func parseInline(_ text: String) -> String {
         var result = text
+        // Images: ![alt](url) → <img> (must come before link rule since ![ is a superset of [)
+        result = result.replacingOccurrences(of: "!\\[([^\\]]*)\\]\\(([^)]+)\\)", with: "<img src=\"$2\" name=\"$1\">", options: .regularExpression)
+        // Links: [text](url) → <a>
+        result = result.replacingOccurrences(of: "\\[([^\\]]+)\\]\\(([^)]+)\\)", with: "<a href=\"$2\">$1</a>", options: .regularExpression)
         // Bold: **Bold**
         result = result.replacingOccurrences(of: "\\*\\*(.+?)\\*\\*", with: "<strong>$1</strong>", options: .regularExpression)
         // Italic: *Italic*
