@@ -181,6 +181,10 @@ actor ManagedMarkItDownRuntime {
         )
         .trimmingCharacters(in: .whitespacesAndNewlines)
 
+        // MarkItDown (markdownify) escapes special chars with backslashes
+        // (e.g. B\&O, Type\-C, \+). Strip them for clean readable output.
+        markdown = Self.stripMarkdownEscapes(markdown)
+
         guard !markdown.isEmpty else {
             throw NSError(
                 domain: "ManagedMarkItDownRuntime",
@@ -398,6 +402,25 @@ actor ManagedMarkItDownRuntime {
         }
 
         return output
+    }
+
+    /// Remove unnecessary backslash escapes inserted by MarkItDown / markdownify.
+    /// Handles common punctuation that gets escaped but should remain literal in
+    /// user-facing Markdown output. Preserves intentional escapes (e.g. `\n`).
+    private static func stripMarkdownEscapes(_ text: String) -> String {
+        // Match backslash followed by a non-alphanumeric, non-whitespace character
+        // that markdownify typically escapes: & - + . ! # | ( ) [ ] { } _ * ~ > = `
+        // Avoid stripping \n, \t, \r (backslash + letter) which are different.
+        guard let regex = try? NSRegularExpression(
+            pattern: #"\\([^a-zA-Z0-9\s])"#
+        ) else { return text }
+
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.stringByReplacingMatches(
+            in: text,
+            range: range,
+            withTemplate: "$1"
+        )
     }
 }
 
