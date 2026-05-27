@@ -36,7 +36,8 @@ enum GenericWebArticleExtractor {
             )
         }
 
-        return AIDocumentExtractionResult(markdown: article.markdownDocument, source: .link(url))
+        let cleanedMarkdown = ManagedMarkItDownRuntime.stripMarkdownEscapes(article.markdownDocument)
+        return AIDocumentExtractionResult(markdown: cleanedMarkdown, source: .link(url))
     }
 
     private static func fetchHTML(from url: URL) async throws -> String {

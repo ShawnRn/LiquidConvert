@@ -49,8 +49,9 @@ enum WeChatArticleExtractor {
             source: .link(url),
             progress: progress
         )
+        let cleanedMarkdown = ManagedMarkItDownRuntime.stripMarkdownEscapes(markdown)
         return AIDocumentExtractionResult(
-            markdown: markdown,
+            markdown: cleanedMarkdown,
             source: .link(url),
             suggestedTitle: article.title
         )
@@ -75,8 +76,9 @@ enum WeChatArticleExtractor {
                 source: .link(url),
                 progress: progress
             )
+            let cleanedMarkdown = ManagedMarkItDownRuntime.stripMarkdownEscapes(markdown)
             return AIDocumentExtractionResult(
-                markdown: markdown,
+                markdown: cleanedMarkdown,
                 source: .link(url),
                 suggestedTitle: article.title
             )
@@ -178,7 +180,7 @@ enum WeChatArticleExtractor {
             return text
         }.value
 
-        let normalizedMarkdown = normalizeWXCLIMarkdown(markdown)
+        let normalizedMarkdown = ManagedMarkItDownRuntime.stripMarkdownEscapes(normalizeWXCLIMarkdown(markdown))
         return AIDocumentExtractionResult(
             markdown: normalizedMarkdown,
             source: .link(url),

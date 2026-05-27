@@ -407,7 +407,7 @@ actor ManagedMarkItDownRuntime {
     /// Remove unnecessary backslash escapes inserted by MarkItDown / markdownify.
     /// Handles common punctuation that gets escaped but should remain literal in
     /// user-facing Markdown output. Preserves intentional escapes (e.g. `\n`).
-    private static func stripMarkdownEscapes(_ text: String) -> String {
+    static func stripMarkdownEscapes(_ text: String) -> String {
         // Match backslash followed by a non-alphanumeric, non-whitespace character
         // that markdownify typically escapes: & - + . ! # | ( ) [ ] { } _ * ~ > = `
         // Avoid stripping \n, \t, \r (backslash + letter) which are different.

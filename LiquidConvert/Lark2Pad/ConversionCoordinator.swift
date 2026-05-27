@@ -242,12 +242,15 @@ final class ConversionCoordinator: ObservableObject {
         autoUpload: Bool,
         uploadMode: UploadMode
     ) async {
+        // Clean markdown backslash escapes (e.g. B\&O -> B&O, Type\-C -> Type-C) before conversion
+        let cleanedContent = ManagedMarkItDownRuntime.stripMarkdownEscapes(content)
+        
         statusMessage = "正在解析 Markdown 结构…"
         phase = .processing
 
         do {
             // Step 1: 提取图片 URLs 和精确 range
-            let mdImages = extractImages(from: content, baseDirectory: baseDirectory)
+            let mdImages = extractImages(from: cleanedContent, baseDirectory: baseDirectory)
 
             // Step 2: 上传图片到私有图床
             var replacements: [(id: Int, base64: String)] = []
@@ -298,7 +301,7 @@ final class ConversionCoordinator: ObservableObject {
 
             // Step 3: 进行高精度替换，生成最终 Markdown
             statusMessage = "正在处理图片链接..."
-            let finalMarkdown = replaceMarkdownImages(content: content, images: mdImages, replacements: replacements)
+            let finalMarkdown = replaceMarkdownImages(content: cleanedContent, images: mdImages, replacements: replacements)
 
             // Step 4: 将 ![alt](url) 转换为 <img> 标签，与旧版 TurndownEngine keepImages 输出一致
             let normalizedMarkdown = convertMarkdownImagesToHTML(finalMarkdown)
