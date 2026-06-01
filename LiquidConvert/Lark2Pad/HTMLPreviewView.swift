@@ -15,7 +15,7 @@ struct HTMLPreviewView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-        config.suppressesIncrementalRendering = true
+        config.suppressesIncrementalRendering = false
         let webView = WKWebView(frame: .zero, configuration: config)
         
         // Correct way to make WKWebView transparent on macOS
@@ -52,6 +52,40 @@ struct HTMLPreviewView: NSViewRepresentable {
                 -webkit-font-smoothing: antialiased;
             }
             img { max-width: 100%; border-radius: 8px; margin: 10px 0; }
+            img[data-lazy-image="true"] {
+                min-height: 180px;
+                background: rgba(127, 127, 127, 0.10);
+            }
+        """
+        let previewBody = lazyLoadedPreviewBody(extractTagContent(tag: "body", from: html))
+        let lazyLoadScript = """
+            <script>
+            (() => {
+                const loadImage = (img) => {
+                    const src = img.dataset.src;
+                    if (!src) return;
+                    img.src = src;
+                    img.removeAttribute('data-src');
+                    img.removeAttribute('data-lazy-image');
+                };
+
+                const lazyImages = Array.from(document.querySelectorAll('img[data-src]'));
+                if (!('IntersectionObserver' in window)) {
+                    lazyImages.forEach(loadImage);
+                    return;
+                }
+
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach((entry) => {
+                        if (!entry.isIntersecting) return;
+                        loadImage(entry.target);
+                        observer.unobserve(entry.target);
+                    });
+                }, { rootMargin: '900px 0px' });
+
+                lazyImages.forEach((img) => observer.observe(img));
+            })();
+            </script>
         """
 
         let styledHTML = """
@@ -61,7 +95,7 @@ struct HTMLPreviewView: NSViewRepresentable {
             <meta charset="utf-8">
             <style>\(extractedStyles)\n\(localCSS)</style>
         </head>
-        <body>\(extractTagContent(tag: "body", from: html))</body>
+        <body>\(previewBody)\(lazyLoadScript)</body>
         </html>
         """
         webView.loadHTMLString(styledHTML, baseURL: nil)
@@ -92,5 +126,47 @@ struct HTMLPreviewView: NSViewRepresentable {
             return tag == "body" ? html : ""
         }
         return String(html[start.upperBound..<end.lowerBound])
+    }
+
+    private func lazyLoadedPreviewBody(_ body: String) -> String {
+        guard let regex = try? NSRegularExpression(
+            pattern: #"<img\b([^>]*?)\bsrc=(["'])(.*?)\2([^>]*)>"#,
+            options: [.caseInsensitive]
+        ) else {
+            return body
+        }
+
+        let nsBody = body as NSString
+        let matches = regex.matches(in: body, options: [], range: NSRange(location: 0, length: nsBody.length))
+        guard matches.count > 3 else { return body }
+
+        let placeholder = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='16'%3E%3C/svg%3E"
+        var result = nsBody
+
+        for (index, match) in matches.enumerated().reversed() {
+            guard index >= 3,
+                  match.numberOfRanges > 4 else {
+                continue
+            }
+
+            let beforeSrc = nsBody.substring(with: match.range(at: 1))
+            let quote = nsBody.substring(with: match.range(at: 2))
+            let src = nsBody.substring(with: match.range(at: 3))
+            let afterSrc = nsBody.substring(with: match.range(at: 4))
+            let replacement = """
+            <img\(beforeSrc)src=\(quote)\(placeholder)\(quote) data-src=\(quote)\(htmlEscaped(src))\(quote) data-lazy-image="true" loading="lazy" decoding="async"\(afterSrc)>
+            """
+            result = result.replacingCharacters(in: match.range, with: replacement) as NSString
+        }
+
+        return result as String
+    }
+
+    private func htmlEscaped(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
     }
 }

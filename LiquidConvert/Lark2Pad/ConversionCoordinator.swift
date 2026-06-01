@@ -148,12 +148,11 @@ final class ConversionCoordinator: ObservableObject {
                     replacements = try await ImageUploader.uploadAll(
                         images: images,
                         behavior: uploadMode == .compressOversizedImages ? .compressOversizedImages : .askBeforeCompressing
-                    ) { [weak self] index, fileProgress, speed in
+                    ) { [weak self] batchProgress in
                         guard let self = self else { return }
-                        let currentStep = Double(index - 1) + fileProgress
-                        self.uploadProgress = currentStep / Double(images.count)
-                        self.speedMessage = speed
-                        self.statusMessage = "正在上传图片 (\(index)/\(images.count))..."
+                        self.uploadProgress = batchProgress.overallFraction
+                        self.speedMessage = batchProgress.speedMessage
+                        self.statusMessage = "正在并发上传图片 (\(batchProgress.completed)/\(batchProgress.total))..."
                     }
                 } catch let error as ImageUploader.UploadError {
                     switch error {
@@ -243,80 +242,77 @@ final class ConversionCoordinator: ObservableObject {
         uploadMode: UploadMode
     ) async {
         // Clean markdown backslash escapes (e.g. B\&O -> B&O, Type\-C -> Type-C) before conversion
-        let cleanedContent = ManagedMarkItDownRuntime.stripMarkdownEscapes(content)
+        let cleanedContent = EtherpadExporter.normalizeMarkdownSpacing(
+            ManagedMarkItDownRuntime.stripMarkdownEscapes(content)
+        )
         
         statusMessage = "正在解析 Markdown 结构…"
         phase = .processing
 
-        do {
-            // Step 1: 提取图片 URLs 和精确 range
-            let mdImages = extractImages(from: cleanedContent, baseDirectory: baseDirectory)
+        // Step 1: 提取图片 URLs 和精确 range
+        let mdImages = extractImages(from: cleanedContent, baseDirectory: baseDirectory)
 
-            // Step 2: 上传图片到私有图床
-            var replacements: [(id: Int, base64: String)] = []
-            if autoUpload && !mdImages.isEmpty {
-                statusMessage =
-                    uploadMode == .compressOversizedImages
-                    ? "正在上传 \(mdImages.count) 张图片（超限图片会自动压缩）..."
-                    : "正在准备上传 \(mdImages.count) 张图片..."
-                uploadProgress = 0
-                speedMessage = ""
+        // Step 2: 上传图片到私有图床
+        var replacements: [(id: Int, base64: String)] = []
+        if autoUpload && !mdImages.isEmpty {
+            statusMessage =
+                uploadMode == .compressOversizedImages
+                ? "正在上传 \(mdImages.count) 张图片（超限图片会自动压缩）..."
+                : "正在准备上传 \(mdImages.count) 张图片..."
+            uploadProgress = 0
+            speedMessage = ""
 
-                let uploadImages = mdImages.map { (id: $0.id, url: $0.resolvedURL) }
+            let uploadImages = mdImages.map { (id: $0.id, url: $0.resolvedURL) }
 
-                do {
-                    replacements = try await ImageUploader.uploadAll(
-                        images: uploadImages,
-                        behavior: uploadMode == .compressOversizedImages ? .compressOversizedImages : .askBeforeCompressing
-                    ) { [weak self] index, fileProgress, speed in
-                        guard let self = self else { return }
-                        let currentStep = Double(index - 1) + fileProgress
-                        self.uploadProgress = currentStep / Double(mdImages.count)
-                        self.speedMessage = speed
-                        self.statusMessage = "正在上传图片 (\(index)/\(mdImages.count))..."
-                    }
-                } catch let error as ImageUploader.UploadError {
-                    switch error {
-                    case .oversizedImageRequiresCompression(let summary):
-                        uploadProgress = 0
-                        speedMessage = ""
-                        oversizedImagePrompt = OversizedImagePrompt(
-                            byteCount: summary.byteCount,
-                            uploadLimitBytes: summary.uploadLimitBytes
-                        )
-                        phase = .idle
-                        statusMessage = ""
-                        return
-                    default:
-                        print("[ConversionCoordinator] ❌ 图片上传环节报错: \(error.localizedDescription)")
-                        phase = .error(message: "图片上传失败: \(error.localizedDescription)")
-                        return
-                    }
-                } catch {
+            do {
+                replacements = try await ImageUploader.uploadAll(
+                    images: uploadImages,
+                    behavior: uploadMode == .compressOversizedImages ? .compressOversizedImages : .askBeforeCompressing
+                ) { [weak self] batchProgress in
+                    guard let self = self else { return }
+                    self.uploadProgress = batchProgress.overallFraction
+                    self.speedMessage = batchProgress.speedMessage
+                    self.statusMessage = "正在并发上传图片 (\(batchProgress.completed)/\(batchProgress.total))..."
+                }
+            } catch let error as ImageUploader.UploadError {
+                switch error {
+                case .oversizedImageRequiresCompression(let summary):
+                    uploadProgress = 0
+                    speedMessage = ""
+                    oversizedImagePrompt = OversizedImagePrompt(
+                        byteCount: summary.byteCount,
+                        uploadLimitBytes: summary.uploadLimitBytes
+                    )
+                    phase = .idle
+                    statusMessage = ""
+                    return
+                default:
                     print("[ConversionCoordinator] ❌ 图片上传环节报错: \(error.localizedDescription)")
-                    phase = .error(message: "图片上传失败: \(error.localizedDescription)。请检查网络连接或稍后重试。")
+                    phase = .error(message: "图片上传失败: \(error.localizedDescription)")
                     return
                 }
+            } catch {
+                print("[ConversionCoordinator] ❌ 图片上传环节报错: \(error.localizedDescription)")
+                phase = .error(message: "图片上传失败: \(error.localizedDescription)。请检查网络连接或稍后重试。")
+                return
             }
-
-            // Step 3: 进行高精度替换，生成最终 Markdown
-            statusMessage = "正在处理图片链接..."
-            let finalMarkdown = replaceMarkdownImages(content: cleanedContent, images: mdImages, replacements: replacements)
-
-            // Step 4: 将 ![alt](url) 转换为 <img> 标签，与旧版 TurndownEngine keepImages 输出一致
-            let normalizedMarkdown = convertMarkdownImagesToHTML(finalMarkdown)
-
-            markdownResult = normalizedMarkdown
-            previewHTML = EtherpadExporter.buildRenderedHTML(from: normalizedMarkdown)
-            etherpadHTML = EtherpadExporter.buildRawHTML(from: normalizedMarkdown)
-
-            statusMessage = "正在渲染预览…"
-            phase = .rendering
-
-            NotificationManager.send(title: "Markdown 转换完成", subtitle: "文件已解析并准备好导出！")
-        } catch {
-            phase = .error(message: "转换失败: \(error.localizedDescription)")
         }
+
+        // Step 3: 进行高精度替换，生成最终 Markdown
+        statusMessage = "正在处理图片链接..."
+        let finalMarkdown = replaceMarkdownImages(content: cleanedContent, images: mdImages, replacements: replacements)
+
+        // Step 4: 将 ![alt](url) 转换为 <img> 标签，与旧版 TurndownEngine keepImages 输出一致
+        let normalizedMarkdown = convertMarkdownImagesToHTML(finalMarkdown)
+
+        markdownResult = normalizedMarkdown
+        previewHTML = EtherpadExporter.buildRenderedHTML(from: normalizedMarkdown)
+        etherpadHTML = EtherpadExporter.buildRawHTML(from: normalizedMarkdown)
+
+        statusMessage = "正在渲染预览…"
+        phase = .rendering
+
+        NotificationManager.send(title: "Markdown 转换完成", subtitle: "文件已解析并准备好导出！")
     }
 
     private func extractImages(from markdown: String, baseDirectory: URL?) -> [MarkdownImage] {

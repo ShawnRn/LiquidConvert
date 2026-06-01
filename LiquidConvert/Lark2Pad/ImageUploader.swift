@@ -16,6 +16,14 @@ final class ImageUploader {
         case compressOversizedImages
     }
 
+    struct UploadBatchProgress: Sendable {
+        let completed: Int
+        let total: Int
+        let overallFraction: Double
+        let activeUploads: Int
+        let speedMessage: String
+    }
+
     enum UploadError: LocalizedError {
         case oversizedImageRequiresCompression(OversizedImageSummary)
         case automaticCompressionFailed(description: String)
@@ -51,42 +59,72 @@ final class ImageUploader {
     
     // MARK: - 配置信息
     private static let uploadLimitBytes = 4_800_000
+    private static let maxConcurrentUploads = 5
     
     /// 共享的 URLSession，开启连接复用 (Keep-Alive)
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default
-        config.httpMaximumConnectionsPerHost = 1
+        config.httpMaximumConnectionsPerHost = 6
         config.timeoutIntervalForRequest = 180 // 针对大图进一步放宽请求超时
         config.timeoutIntervalForResource = 300
         return URLSession(configuration: config)
     }()
     
     /// 批量处理图片：下载飞书临时图片并上传至私有图床输出进度
-    /// 回调参数：(当前索引, 当前文件进度0-1, 实时速度字符串)
+    /// 回调参数：聚合后的批量上传进度
     static func uploadAll(images: [(id: Int, url: String)], 
                         behavior: UploadBehavior = .direct,
-                        progress: ((Int, Double, String) -> Void)? = nil) async throws -> [(id: Int, base64: String)] {
+                        progress: (@MainActor (UploadBatchProgress) -> Void)? = nil) async throws -> [(id: Int, base64: String)] {
         if images.isEmpty { return [] }
-        
-        print("[ImageUploader] 开始串行处理 \(images.count) 张图片，并启用实时进度监控...")
-        var results: [(id: Int, base64: String)] = []
-        
-        for (index, item) in images.enumerated() {
-            // 初始化当前图片的进度
-            progress?(index + 1, 0.0, "准备中...")
-            
-            print("[ImageUploader] 正在处理第 \(index + 1)/\(images.count) 张图片: \(item.id)")
-            
-            let newURL = try await uploadSingleImage(url: item.url, behavior: behavior, onProgress: { fileProgress, speed in
-                progress?(index + 1, fileProgress, speed)
-            })
-            results.append((id: item.id, base64: newURL))
-            
-            try? await Task.sleep(for: .milliseconds(300))
+
+        let concurrency = min(maxConcurrentUploads, images.count)
+        let tracker = UploadProgressTracker(total: images.count)
+        progress?(await tracker.snapshot())
+
+        print("[ImageUploader] 开始并发处理 \(images.count) 张图片，并发数: \(concurrency)")
+
+        var iterator = images.enumerated().makeIterator()
+        var results: [(position: Int, id: Int, base64: String)] = []
+
+        return try await withThrowingTaskGroup(of: (position: Int, id: Int, base64: String).self) { group in
+            func enqueueNext() {
+                guard let (position, item) = iterator.next() else { return }
+                group.addTask {
+                    let startedProgress = await tracker.markStarted(position: position)
+                    await MainActor.run { progress?(startedProgress) }
+
+                    print("[ImageUploader] 正在处理第 \(position + 1)/\(images.count) 张图片: \(item.id)")
+
+                    let newURL = try await uploadSingleImage(url: item.url, behavior: behavior) { fileProgress, speed in
+                        Task {
+                            let snapshot = await tracker.update(position: position, fraction: fileProgress, speed: speed)
+                            await MainActor.run { progress?(snapshot) }
+                        }
+                    }
+
+                    let finishedProgress = await tracker.markFinished(position: position)
+                    await MainActor.run { progress?(finishedProgress) }
+
+                    return (position: position, id: item.id, base64: newURL)
+                }
+            }
+
+            for _ in 0..<concurrency {
+                enqueueNext()
+            }
+
+            while let result = try await group.next() {
+                results.append(result)
+                enqueueNext()
+            }
+
+            let orderedResults = results
+                .sorted { $0.position < $1.position }
+                .map { (id: $0.id, base64: $0.base64) }
+
+            print("[ImageUploader] 最终成功上传 \(orderedResults.count) / \(images.count) 张图片")
+            return orderedResults
         }
-        
-        print("[ImageUploader] 最终成功上传 \(results.count) / \(images.count) 张图片")
-        return results
     }
     
     // MARK: - 私有方法
@@ -407,5 +445,61 @@ private class UploadProgressDelegate: NSObject, URLSessionTaskDelegate {
         }
         
         return "\(Int(bytesPerSec)) B/s"
+    }
+}
+
+private actor UploadProgressTracker {
+    private let total: Int
+    private var fractions: [Double]
+    private var activePositions: Set<Int> = []
+    private var completedPositions: Set<Int> = []
+    private var latestSpeed = "准备中..."
+
+    init(total: Int) {
+        self.total = total
+        self.fractions = Array(repeating: 0, count: total)
+    }
+
+    func snapshot() -> ImageUploader.UploadBatchProgress {
+        buildSnapshot()
+    }
+
+    func markStarted(position: Int) -> ImageUploader.UploadBatchProgress {
+        activePositions.insert(position)
+        return buildSnapshot()
+    }
+
+    func update(position: Int, fraction: Double, speed: String) -> ImageUploader.UploadBatchProgress {
+        guard fractions.indices.contains(position) else {
+            return buildSnapshot()
+        }
+
+        activePositions.insert(position)
+        fractions[position] = max(fractions[position], min(max(fraction, 0), 1))
+        if !speed.isEmpty {
+            latestSpeed = "\(activePositions.count) 路并发 · \(speed)"
+        }
+        return buildSnapshot()
+    }
+
+    func markFinished(position: Int) -> ImageUploader.UploadBatchProgress {
+        if fractions.indices.contains(position) {
+            fractions[position] = 1
+        }
+        activePositions.remove(position)
+        completedPositions.insert(position)
+        latestSpeed = activePositions.isEmpty ? "已完成" : latestSpeed
+        return buildSnapshot()
+    }
+
+    private func buildSnapshot() -> ImageUploader.UploadBatchProgress {
+        let overall = total == 0 ? 1 : fractions.reduce(0, +) / Double(total)
+        return ImageUploader.UploadBatchProgress(
+            completed: completedPositions.count,
+            total: total,
+            overallFraction: min(max(overall, 0), 1),
+            activeUploads: activePositions.count,
+            speedMessage: latestSpeed
+        )
     }
 }

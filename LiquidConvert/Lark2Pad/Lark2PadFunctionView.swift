@@ -6,6 +6,7 @@
 //  Adapted for Liquid Glass design language.
 //
 
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -15,6 +16,7 @@ struct Lark2PadFunctionView: View {
     @State private var toastMessage: String?
     @State private var toastIsError = false
     @State private var showLoginSheet = false
+    @State private var isSyncingToPad = false
     @AppStorage("lark2pad_auto_upload") private var autoUploadImages = true
     @Environment(\.colorScheme) private var colorScheme
     
@@ -414,6 +416,15 @@ struct Lark2PadFunctionView: View {
             .tint(.blue)
             .controlSize(.large)
 
+            Button(action: syncToPad) {
+                Label(isSyncingToPad ? "同步中" : "同步到 Pad", systemImage: isSyncingToPad ? "arrow.triangle.2.circlepath" : "icloud.and.arrow.up")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+            .controlSize(.large)
+            .disabled(isSyncingToPad || coordinator.markdownResult.isEmpty || coordinator.etherpadHTML.isEmpty)
+
             Button(action: { coordinator.reset() }) {
                 Image(systemName: "arrow.counterclockwise")
                     .font(.headline)
@@ -520,6 +531,34 @@ struct Lark2PadFunctionView: View {
         pb.clearContents()
         pb.setString(coordinator.markdownResult, forType: .string)
         showToast("Markdown 内容已复制！")
+    }
+
+    private func syncToPad() {
+        guard coordinator.isLoggedIntoEtherpad else {
+            showToast("请先登录公司 Etherpad 账号", isError: true)
+            return
+        }
+
+        isSyncingToPad = true
+        let markdown = coordinator.markdownResult
+        let html = coordinator.etherpadHTML
+
+        Task {
+            do {
+                let result = try await EtherpadSyncService.sync(markdown: markdown, html: html)
+                await MainActor.run {
+                    isSyncingToPad = false
+                    let suffix = result.renamed ? "，已自动重命名为 \(result.padID)" : ""
+                    showToast("已同步到 \(result.padID)\(suffix)")
+                    NSWorkspace.shared.open(result.url)
+                }
+            } catch {
+                await MainActor.run {
+                    isSyncingToPad = false
+                    showToast("同步失败: \(error.localizedDescription)", isError: true)
+                }
+            }
+        }
     }
 
     private func handleImportedURLs(_ urls: [URL]) {

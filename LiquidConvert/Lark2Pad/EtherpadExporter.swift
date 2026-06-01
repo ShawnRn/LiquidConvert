@@ -13,15 +13,45 @@ enum EtherpadExporter {
 
     /// Build the rendered (preview) HTML document.
     static func buildRenderedHTML(from markdown: String) -> String {
-        let bodyContent = markdownToHTML(markdown)
+        let bodyContent = markdownToHTML(normalizeMarkdownSpacing(markdown))
         return wrapInHTMLDocument(body: bodyContent)
     }
 
-    /// Build the raw (export) HTML document preserving Markdown syntax.
+    /// Build the export HTML document preserving Markdown syntax as editable text.
     static func buildRawHTML(from markdown: String) -> String {
-        let bodyContent = markdown
-            .replacingOccurrences(of: "\n", with: "<br>\n")
+        let bodyContent = escapedMarkdownToHTML(normalizeMarkdownSpacing(markdown))
         return wrapInHTMLDocument(body: bodyContent)
+    }
+
+    /// Collapse editor-exported spacer lines while preserving Markdown paragraph breaks.
+    static func normalizeMarkdownSpacing(_ markdown: String) -> String {
+        let lines = markdown
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+
+        var normalized: [String] = []
+        var previousWasBlank = false
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            let isBlank = trimmed.isEmpty || trimmed == ">"
+            if isBlank {
+                if !previousWasBlank && !normalized.isEmpty {
+                    normalized.append("")
+                }
+                previousWasBlank = true
+            } else {
+                normalized.append(line)
+                previousWasBlank = false
+            }
+        }
+
+        while normalized.last?.isEmpty == true {
+            normalized.removeLast()
+        }
+
+        return normalized.joined(separator: "\n")
     }
 
     /// Common HTML wrapper for both modes.
@@ -53,6 +83,73 @@ enum EtherpadExporter {
         </body>
         </html>
         """
+    }
+
+    private static func escapedMarkdownToHTML(_ markdown: String) -> String {
+        markdown
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+            .map { line in
+                if let imageTag = sanitizedImageTag(from: line) {
+                    return imageTag
+                }
+                return htmlEscaped(line)
+            }
+            .joined(separator: "<br>\n")
+    }
+
+    private static func htmlEscaped(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
+    }
+
+    private static func sanitizedImageTag(from line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.range(
+            of: #"^<img\b[^>]*>$"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil else {
+            return nil
+        }
+
+        guard let src = firstAttribute("src", in: trimmed),
+              isAllowedImageSource(src) else {
+            return nil
+        }
+
+        let name = firstAttribute("name", in: trimmed)
+        let escapedSrc = htmlEscaped(src)
+        if let name, !name.isEmpty {
+            return "<img src=\"\(escapedSrc)\" name=\"\(htmlEscaped(name))\">"
+        }
+        return "<img src=\"\(escapedSrc)\">"
+    }
+
+    private static func firstAttribute(_ name: String, in tag: String) -> String? {
+        let pattern = #"\b"# + NSRegularExpression.escapedPattern(for: name) + #"\s*=\s*(['"])(.*?)\1"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let nsString = tag as NSString
+        let range = NSRange(location: 0, length: nsString.length)
+        guard let match = regex.firstMatch(in: tag, options: [], range: range),
+              match.numberOfRanges > 2 else {
+            return nil
+        }
+        return nsString.substring(with: match.range(at: 2))
+    }
+
+    private static func isAllowedImageSource(_ src: String) -> Bool {
+        let lowercased = src.lowercased()
+        return lowercased.hasPrefix("https://")
+            || lowercased.hasPrefix("http://")
+            || lowercased.hasPrefix("data:image/")
+            || lowercased.hasPrefix("file://")
     }
 
     /// Convert Markdown to basic HTML tags.
@@ -103,6 +200,10 @@ enum EtherpadExporter {
             if trimmed.hasPrefix("> ") {
                 let content = parseInline(String(trimmed.dropFirst(2)))
                 result += "<blockquote>\(content)</blockquote>\n"
+                continue
+            }
+
+            if trimmed == ">" {
                 continue
             }
 
