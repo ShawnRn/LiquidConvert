@@ -129,7 +129,7 @@ final class ImageUploader {
     
     // MARK: - 私有方法
     
-    private static func uploadSingleImage(
+    static func uploadSingleImage(
         url: String,
         behavior: UploadBehavior,
         onProgress: @escaping (Double, String) -> Void
@@ -272,6 +272,7 @@ final class ImageUploader {
                                      mimeType: String, 
                                      retryCount: Int = 0,
                                      onProgress: @escaping (Double, String) -> Void) async throws -> String {
+        let sanitizedName = sanitizeFilename(filename)
         let maxRetries = 2
         let cookies = CookieManager.shared.cookieHeaderValue
         let padId = SecureRuntimeConfig.padIdentifier
@@ -296,7 +297,7 @@ final class ImageUploader {
         
         var body = Data()
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(sanitizedName)\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
         body.append(data)
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
@@ -321,7 +322,7 @@ final class ImageUploader {
                     print("[ImageUploader] ✅ 上传成功 (JSON): \(resultUrl)")
                     ImageGalleryStore.shared.recordUpload(
                         url: resultUrl,
-                        filename: filename,
+                        filename: sanitizedName,
                         mimeType: mimeType,
                         byteCount: data.count
                     )
@@ -337,7 +338,7 @@ final class ImageUploader {
                     print("[ImageUploader] ✅ 上传成功 (String): \(finalUrl)")
                     ImageGalleryStore.shared.recordUpload(
                         url: finalUrl,
-                        filename: filename,
+                        filename: sanitizedName,
                         mimeType: mimeType,
                         byteCount: data.count
                     )
@@ -417,6 +418,34 @@ final class ImageUploader {
         default:
             return fallback
         }
+    }
+    
+    static func sanitizeFilename(_ filename: String) -> String {
+        let parts = filename.components(separatedBy: ".")
+        guard parts.count > 0 else {
+            return "l2p_\(UUID().uuidString.prefix(8)).png"
+        }
+        
+        let ext = parts.last?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "png"
+        let nameWithoutExt = parts.dropLast().joined(separator: "_")
+        
+        // 过滤主文件名：只允许英文字母、数字、dash(-)、underscore(_)
+        let namePattern = "[^a-zA-Z0-9_-]"
+        var cleanName = nameWithoutExt.replacingOccurrences(of: namePattern, with: "", options: .regularExpression)
+        if cleanName.isEmpty {
+            cleanName = "l2p_\(UUID().uuidString.prefix(8))"
+        }
+        
+        // 过滤扩展名：只允许英文字母、数字
+        let extPattern = "[^a-zA-Z0-9]"
+        var cleanExt = ext.replacingOccurrences(of: extPattern, with: "", options: .regularExpression)
+        
+        let allowedExtensions = ["png", "jpg", "jpeg", "gif", "webp", "heic", "tiff"]
+        if cleanExt.isEmpty || !allowedExtensions.contains(cleanExt) {
+            cleanExt = "png"
+        }
+        
+        return "\(cleanName).\(cleanExt)"
     }
 }
 

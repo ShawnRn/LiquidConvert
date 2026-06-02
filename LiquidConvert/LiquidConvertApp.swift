@@ -137,6 +137,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         UNUserNotificationCenter.current().delegate = self
 
         LiquidConvertCLIInstaller.promptForInstallIfNeeded()
+
+        // 自动检测并修复桌面上的早报 HTML
+        Task {
+            await AutoZaobaoFixer.fixIfNeeded()
+        }
     }
 
     // 🔥 关键：让 App 在前台也能显示通知

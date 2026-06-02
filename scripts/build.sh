@@ -37,9 +37,7 @@ create_dmg_with_layout() {
     mkdir -p "$staging_dir"
     ditto --noextattr --norsrc "$app_bundle" "${staging_dir}/${display_app_name}"
     xattr -cr "${staging_dir}/${display_app_name}" || true
-    find -L "${staging_dir}/${display_app_name}" -xattrname com.apple.FinderInfo \
-        -exec xattr -d -s com.apple.FinderInfo {} \; \
-        -exec xattr -d com.apple.FinderInfo {} \; 2>/dev/null || true
+    find "${staging_dir}/${display_app_name}" -name ".DS_Store" -depth -exec rm {} \; 2>/dev/null || true
 
     if command -v create-dmg >/dev/null 2>&1; then
         echo "==> Creating styled DMG with create-dmg for ${target_arch}..."
@@ -156,9 +154,7 @@ for TARGET_ARCH in "${TARGET_ARCHS[@]}"; do
     SIGNING_IDENTITY="-"
     echo "==> Removing extended attributes before signing for ${TARGET_ARCH}..."
     xattr -cr "${ARCH_APP_BUNDLE}" || true
-    find -L "${ARCH_APP_BUNDLE}" -xattrname com.apple.FinderInfo \
-        -exec xattr -d -s com.apple.FinderInfo {} \; \
-        -exec xattr -d com.apple.FinderInfo {} \; 2>/dev/null || true
+    find "${ARCH_APP_BUNDLE}" -name ".DS_Store" -depth -exec rm {} \; 2>/dev/null || true
 
     echo "==> Signing app bundle (Ad-hoc) for ${TARGET_ARCH}..."
     codesign --force --deep --sign "${SIGNING_IDENTITY}" "${ARCH_APP_BUNDLE}"
