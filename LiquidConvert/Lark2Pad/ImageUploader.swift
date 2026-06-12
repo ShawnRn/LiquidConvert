@@ -1,5 +1,7 @@
 import Foundation
 import UniformTypeIdentifiers
+import ImageIO
+import CoreGraphics
 
 /// 处理飞书图片下载并自动上传到公司私有图床的工具类
 @MainActor
@@ -140,17 +142,20 @@ final class ImageUploader {
         
         do {
             // 1. 下载图片数据
-            let (data, response) = try await session.data(from: imageURL)
+            let (rawData, response) = try await session.data(from: imageURL)
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard statusCode == 200 else { 
                 print("[ImageUploader] ❌ 下载失败: \(url), 状态码: \(statusCode)")
                 throw UploadError.uploadRejected(statusCode: statusCode, description: "原图下载失败") 
             }
             
-            let mimeType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? "image/png"
+            let originalMimeType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? "image/png"
             let baseName = "l2p_\(UUID().uuidString.prefix(8))"
             
-            print("[ImageUploader] 已下载数据 (\(data.count / 1024) KB), 准备上传...")
+            // 2. 统一转 JPEG：非 JPEG 格式（WebP/PNG/HEIC 等）全部转换，避免兼容性问题
+            let (data, mimeType) = normalizeToJPEG(data: rawData, originalMimeType: originalMimeType)
+            
+            print("[ImageUploader] 已下载数据 (\(rawData.count / 1024) KB → \(data.count / 1024) KB \(mimeType)), 准备上传...")
 
             let payload = try preparePayload(
                 data: data,
@@ -418,6 +423,48 @@ final class ImageUploader {
         default:
             return fallback
         }
+    }
+    
+    /// 将非 JPEG 图片统一转换为 JPEG 格式，确保上传兼容性
+    /// - Returns: (转换后的数据, MIME 类型)
+    private static func normalizeToJPEG(data: Data, originalMimeType: String) -> (Data, String) {
+        // 已经是 JPEG 的直接返回
+        if originalMimeType.contains("jpeg") || originalMimeType.contains("jpg") {
+            return (data, originalMimeType)
+        }
+        
+        // GIF 保留原格式（动图）
+        if originalMimeType.contains("gif") {
+            return (data, originalMimeType)
+        }
+        
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            print("[ImageUploader] ⚠️ 无法解码图片，保留原格式上传")
+            return (data, originalMimeType)
+        }
+        
+        let mutableData = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            mutableData, UTType.jpeg.identifier as CFString, 1, nil
+        ) else {
+            print("[ImageUploader] ⚠️ 无法创建 JPEG 编码器，保留原格式上传")
+            return (data, originalMimeType)
+        }
+        
+        let options: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: 0.85
+        ]
+        CGImageDestinationAddImage(destination, cgImage, options as CFDictionary)
+        
+        guard CGImageDestinationFinalize(destination) else {
+            print("[ImageUploader] ⚠️ JPEG 编码失败，保留原格式上传")
+            return (data, originalMimeType)
+        }
+        
+        let jpegData = mutableData as Data
+        print("[ImageUploader] 🔄 \(originalMimeType) → image/jpeg (\(data.count / 1024) KB → \(jpegData.count / 1024) KB)")
+        return (jpegData, "image/jpeg")
     }
     
     static func sanitizeFilename(_ filename: String) -> String {

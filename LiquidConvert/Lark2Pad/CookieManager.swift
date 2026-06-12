@@ -40,6 +40,42 @@ final class CookieManager {
         print("[CookieManager] 会话状态: primary=\(hasPrimaryCookie), session=\(hasSessionCookie)")
     }
     
+    /// 手动导入解析过的 Cookie 字符串
+    @discardableResult
+    func importRawCookieString(_ cookieString: String) -> Bool {
+        let pairs = cookieString.components(separatedBy: ";")
+        var newCookies: [HTTPCookie] = []
+        let domain = SecureRuntimeConfig.ifanrDomain
+        
+        for pair in pairs {
+            let parts = pair.components(separatedBy: "=")
+            guard parts.count >= 1 else { continue }
+            let name = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = parts.dropFirst().joined(separator: "=").trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            guard !name.isEmpty else { continue }
+            
+            let properties: [HTTPCookiePropertyKey: Any] = [
+                .name: name,
+                .value: value,
+                .domain: "." + domain,
+                .path: "/"
+            ]
+            
+            if let cookie = HTTPCookie(properties: properties) {
+                newCookies.append(cookie)
+            }
+        }
+        
+        if !newCookies.isEmpty {
+            self.cachedCookies = newCookies
+            saveToDisk(cookies: newCookies)
+            print("[CookieManager] 手动导入了 \(newCookies.count) 条 Cookie")
+            return true
+        }
+        return false
+    }
+    
     /// 获取完整的 Cookie 字符串用于 HTTP Header
     var cookieHeaderValue: String {
         return cachedCookies.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")

@@ -63,6 +63,9 @@ struct Lark2PadFunctionView: View {
         }) {
             Lark2PadLoginView(coordinator: coordinator)
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("Lark2PadLoginSuccess"))) { _ in
+            showLoginSheet = false
+        }
         .alert(
             "检测到超限图片",
             isPresented: Binding(
