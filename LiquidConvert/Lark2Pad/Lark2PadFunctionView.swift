@@ -411,12 +411,19 @@ struct Lark2PadFunctionView: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
 
-            Button(action: { showExporter = true }) {
-                Label("保存 Etherpad HTML", systemImage: "arrow.down.doc.fill")
+            Button(action: copyEtherpad) {
+                Label("复制 Etherpad", systemImage: "doc.on.clipboard")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .tint(.blue)
+            .controlSize(.large)
+
+            Button(action: { showExporter = true }) {
+                Label("保存 HTML", systemImage: "arrow.down.doc")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
             .controlSize(.large)
 
             Button(action: syncToPad) {
@@ -534,6 +541,14 @@ struct Lark2PadFunctionView: View {
         pb.clearContents()
         pb.setString(coordinator.markdownResult, forType: .string)
         showToast("Markdown 内容已复制！")
+    }
+
+    private func copyEtherpad() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(coordinator.etherpadHTML, forType: .html)
+        pb.setString(coordinator.etherpadHTML, forType: .string)
+        showToast("Etherpad 格式已复制！")
     }
 
     private func syncToPad() {
