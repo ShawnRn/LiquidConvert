@@ -47,7 +47,7 @@ create_dmg_with_layout() {
             --dmg-title "${PROJECT_NAME}" \
             --no-code-sign \
             "${staging_dir}/${display_app_name}" \
-            "${dmg_dir}"
+            "${dmg_dir}" || echo "Warning: create-dmg failed, falling back to hdiutil..."
 
         if [[ -f "${styled_dmg_path}" && "${styled_dmg_path}" != "${dmg_path}" ]]; then
             mv -f "${styled_dmg_path}" "${dmg_path}"

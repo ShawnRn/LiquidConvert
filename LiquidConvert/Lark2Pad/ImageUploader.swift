@@ -608,19 +608,11 @@ final class ImageUploader {
         let roundedWidth = Int(targetWidth)
         let roundedHeight = Int(targetHeight)
 
-        // 核心视觉一致性算法：以 800px 作为屏幕上标准展示宽度，视觉圆角半径设为 16px
-        let targetVisualRadius: CGFloat = 16.0
-        let targetDisplayWidth: CGFloat = 800.0
-        
-        let cornerRadius: CGFloat
-        if targetWidth > targetDisplayWidth {
-            // 大图会被 CSS max-width: 100% 缩放，需按比例放大裁剪的圆角半径，以保证缩放后视觉圆角仍为 16px
-            let scale = targetWidth / targetDisplayWidth
-            cornerRadius = targetVisualRadius * scale
-        } else {
-            // 小图不会被缩放，直接使用 16px；但对于特别小的图限制最大不超过宽度的 15%，最小不低于 8px
-            cornerRadius = max(8, min(targetVisualRadius, targetWidth * 0.15))
-        }
+        // 核心等比圆角计算（几何相似性定理）：
+        // 为了让图片在任何终端（手机、电脑）缩放展示时其圆角比例观感都绝对一致，
+        // 我们在物理裁剪时让圆角半径与图片的物理宽度保持恒定的 2.0% 比例（即以 800px 宽度视觉圆角 16px 为基准）。
+        // 这样无论如何缩放，屏幕上的“圆角/宽度”比率永远是 2.0%，彻底解决大小图及跨端视觉不一致问题。
+        let cornerRadius = targetWidth * 0.02
 
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let context = CGContext(
