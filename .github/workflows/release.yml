@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-27
+    runs-on: macos-15
     env:
       HOMEBREW_NO_AUTO_UPDATE: 1
       HOMEBREW_NO_INSTALL_CLEANUP: 1
@@ -30,19 +30,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Select Xcode 27 toolchain
+      - name: Select Xcode 16 toolchain
         shell: bash
         run: |
           set -euo pipefail
 
           ACTIVE_XCODE_VERSION="$(xcodebuild -version)"
 
-          if grep -q '^Xcode 27' <<<"$ACTIVE_XCODE_VERSION"; then
-            echo "Xcode 27 already active"
+          if grep -q '^Xcode 16' <<<"$ACTIVE_XCODE_VERSION"; then
+            echo "Xcode 16 already active"
           else
             while IFS= read -r candidate; do
               CANDIDATE_VERSION="$(DEVELOPER_DIR="${candidate}/Contents/Developer" xcodebuild -version)"
-              grep -q '^Xcode 27' <<<"$CANDIDATE_VERSION" || continue
+              grep -q '^Xcode 16' <<<"$CANDIDATE_VERSION" || continue
               sudo xcode-select -switch "${candidate}/Contents/Developer"
               ACTIVE_XCODE_VERSION="$CANDIDATE_VERSION"
               break
@@ -54,8 +54,8 @@ jobs:
           sw_vers
 
           ACTIVE_XCODE_VERSION="$(xcodebuild -version)"
-          if ! grep -q '^Xcode 27' <<<"$ACTIVE_XCODE_VERSION"; then
-            echo "Expected Xcode 27 on the release runner, but a different toolchain is active."
+          if ! grep -q '^Xcode 16' <<<"$ACTIVE_XCODE_VERSION"; then
+            echo "Expected Xcode 16 on the release runner, but a different toolchain is active."
             exit 1
           fi
 
