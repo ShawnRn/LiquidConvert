@@ -8,7 +8,20 @@ import SwiftUI
 @MainActor
 final class ImageUploader {
     /// 静态内存缓存，用于避免在转换出错重试时重复下载和上传相同的图片
+    private static let cacheLock = NSLock()
     private static var uploadedCache: [String: String] = [:]
+    
+    private static func getCachedURL(for url: String) -> String? {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return uploadedCache[url]
+    }
+    
+    private static func setCachedURL(_ uploadedURL: String, for url: String) {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        uploadedCache[url] = uploadedURL
+    }
 
     struct OversizedImageSummary: Sendable, Equatable {
         let sourceURL: String
@@ -71,8 +84,8 @@ final class ImageUploader {
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default
         config.httpMaximumConnectionsPerHost = 6
-        config.timeoutIntervalForRequest = 180 // 针对大图进一步放宽请求超时
-        config.timeoutIntervalForResource = 300
+        config.timeoutIntervalForRequest = 20 // 缩短超时时间，配合缓存机制，在网络挂起时能及时超时重试，避免永久卡死
+        config.timeoutIntervalForResource = 45
         return URLSession(configuration: config)
     }()
     
@@ -141,7 +154,7 @@ final class ImageUploader {
         onProgress: @escaping (Double, String) -> Void
     ) async throws -> String {
         // 优先检查静态缓存，实现秒传，防止由于个别图片失败重试时导致全部图片重头下载上传
-        if let cachedURL = uploadedCache[url] {
+        if let cachedURL = getCachedURL(for: url) {
             print("[ImageUploader] ⚡️ 命中图片上传缓存: \(url) -> \(cachedURL)")
             onProgress(1.0, "已缓存")
             return cachedURL
@@ -183,7 +196,7 @@ final class ImageUploader {
                 mimeType: payload.mimeType,
                 onProgress: onProgress
             )
-            uploadedCache[url] = uploadedURL
+            setCachedURL(uploadedURL, for: url)
             return uploadedURL
         } catch {
             print("[ImageUploader] ❌ 图片下载/处理阶段失败: \(url), 错误: \(error.localizedDescription)")
@@ -698,6 +711,11 @@ private actor UploadProgressTracker {
 
     func update(position: Int, fraction: Double, speed: String) -> ImageUploader.UploadBatchProgress {
         guard fractions.indices.contains(position) else {
+            return buildSnapshot()
+        }
+
+        // 如果已经完成，则直接忽略任何滞后的进度更新，避免把已完成的 position 重新插入 activePositions 中
+        guard !completedPositions.contains(position) else {
             return buildSnapshot()
         }
 
