@@ -41,7 +41,8 @@ struct HTMLPreviewView: NSViewRepresentable {
 
         // Combine extracted styles with local presentation CSS
         let extractedStyles = extractTagContent(tag: "style", from: html)
-        let localCSS = """
+            let imgBorderRadius = (UserDefaults.standard.object(forKey: "lark2pad_round_images") == nil || UserDefaults.standard.bool(forKey: "lark2pad_round_images")) ? "8px" : "0"
+            let localCSS = """
             body {
                 font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
                 font-size: 14px;
@@ -51,7 +52,7 @@ struct HTMLPreviewView: NSViewRepresentable {
                 padding: 20px 24px;
                 -webkit-font-smoothing: antialiased;
             }
-            img { max-width: 100%; border-radius: 8px; margin: 10px 0; }
+            img { max-width: 100%; border-radius: \(imgBorderRadius); margin: 10px 0; }
             img[data-lazy-image="true"] {
                 min-height: 180px;
                 background: rgba(127, 127, 127, 0.10);

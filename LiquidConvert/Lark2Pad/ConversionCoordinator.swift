@@ -198,6 +198,7 @@ final class ConversionCoordinator: ObservableObject {
 
     /// Complete the process once rendering is finished.
     func markDone() {
+        guard phase == .rendering else { return }
         phase = .done
     }
 
