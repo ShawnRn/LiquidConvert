@@ -172,7 +172,7 @@ final class ImageUploader {
         
         do {
             // 1. 下载图片数据 (引入 withTimeout 30秒限时保护，防止下载在 data_stall 网络环境下挂死)
-            let downloadResult = try await withTimeout(seconds: 30.0) {
+            let downloadResult = try await withTimeout(seconds: 10.0) {
                 let (rawData, response) = try await session.data(from: imageURL)
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
                 let mimeType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? "image/png"
@@ -355,7 +355,7 @@ final class ImageUploader {
         }
         
         do {
-            let responseString = try await withTimeout(seconds: 30.0) {
+            let responseString = try await withTimeout(seconds: 10.0) {
                 let (responseData, response) = try await session.upload(for: request, from: body, delegate: delegate)
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
                 let responseStr = String(data: responseData, encoding: .utf8) ?? "空响应"
@@ -506,45 +506,50 @@ final class ImageUploader {
         let width = cgImage.width
         let height = cgImage.height
         
+        // 等比例缩放：超过 1280px 的维度才缩放，不足的保持原尺寸
         let maxAllowedDimension: CGFloat = 1280.0
-        guard max(CGFloat(width), CGFloat(height)) > maxAllowedDimension else {
-            return (data, originalMimeType)
+        let needsResize = max(CGFloat(width), CGFloat(height)) > maxAllowedDimension
+        
+        let targetWidth: Int
+        let targetHeight: Int
+        if needsResize {
+            let scale = maxAllowedDimension / max(CGFloat(width), CGFloat(height))
+            targetWidth = Int(CGFloat(width) * scale)
+            targetHeight = Int(CGFloat(height) * scale)
+        } else {
+            targetWidth = width
+            targetHeight = height
         }
         
-        let scale = maxAllowedDimension / max(CGFloat(width), CGFloat(height))
-        let targetWidth = CGFloat(width) * scale
-        let targetHeight = CGFloat(height) * scale
-        let roundedWidth = Int(targetWidth)
-        let roundedHeight = Int(targetHeight)
-        
+        // 无论是否缩放，一律重新编码为 JPEG 以确保上传体积可控
+        // 对于有 Alpha 通道的图片，填充白色背景后再输出 JPEG
         let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let hasAlpha = cgImage.alphaInfo != .none && cgImage.alphaInfo != .noneSkipLast && cgImage.alphaInfo != .noneSkipFirst
-        let bitmapInfo = hasAlpha ? CGImageAlphaInfo.premultipliedLast.rawValue : CGImageAlphaInfo.noneSkipLast.rawValue
-        
         guard let context = CGContext(
             data: nil,
-            width: roundedWidth,
-            height: roundedHeight,
+            width: targetWidth,
+            height: targetHeight,
             bitsPerComponent: 8,
             bytesPerRow: 0,
             space: colorSpace,
-            bitmapInfo: bitmapInfo
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
         ) else {
             return (data, originalMimeType)
         }
         
+        // 先填充白色背景（消除 Alpha 透明区域的黑色底色问题）
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
+        
+        // 绘制图片
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
         
-        guard let scaledImage = context.makeImage() else {
+        guard let resultImage = context.makeImage() else {
             return (data, originalMimeType)
         }
         
         let mutableData = NSMutableData()
-        let outputFormat: UTType = hasAlpha ? .png : .jpeg
-        let outputMime = hasAlpha ? "image/png" : "image/jpeg"
-        
         guard let destination = CGImageDestinationCreateWithData(
-            mutableData, outputFormat.identifier as CFString, 1, nil
+            mutableData, UTType.jpeg.identifier as CFString, 1, nil
         ) else {
             return (data, originalMimeType)
         }
@@ -552,14 +557,18 @@ final class ImageUploader {
         let options: [CFString: Any] = [
             kCGImageDestinationLossyCompressionQuality: 0.85
         ]
-        CGImageDestinationAddImage(destination, scaledImage, options as CFDictionary)
+        CGImageDestinationAddImage(destination, resultImage, options as CFDictionary)
         
         guard CGImageDestinationFinalize(destination) else {
             return (data, originalMimeType)
         }
         
-        print("[ImageUploader] 📏 仅缩放图片分辨率(不裁剪圆角): \(width)x\(height) -> \(roundedWidth)x\(roundedHeight)")
-        return (mutableData as Data, outputMime)
+        if needsResize {
+            print("[ImageUploader] 📏 缩放+转 JPEG (不裁剪圆角): \(width)x\(height) -> \(targetWidth)x\(targetHeight), \(data.count / 1024) KB -> \(mutableData.length / 1024) KB")
+        } else {
+            print("[ImageUploader] 📏 转 JPEG (不裁剪圆角,保持原尺寸): \(width)x\(height), \(data.count / 1024) KB -> \(mutableData.length / 1024) KB")
+        }
+        return (mutableData as Data, "image/jpeg")
     }
     
     /// 将图片规范化为 PNG 格式（除了 GIF）并添加精细的 iOS 贝塞尔曲线连续圆角（超椭圆）。
