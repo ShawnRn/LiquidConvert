@@ -274,7 +274,7 @@ final class ImageUploader {
             quality: 0.8,
             deleteOriginal: false,
             autoCompressTo5MB: true,
-            targetFormat: preferredOutputFormat(for: inputExtension),
+            targetFormat: originalMimeType.contains("gif") ? .gif : .jpeg,
             gifFrameRate: nil,
             gifColorDepth: nil,
             gifCompressionPriority: nil
