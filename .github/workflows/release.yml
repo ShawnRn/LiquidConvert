@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-26
+    runs-on: macos-27
     env:
       HOMEBREW_NO_AUTO_UPDATE: 1
       HOMEBREW_NO_INSTALL_CLEANUP: 1
@@ -30,19 +30,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Select Xcode 26 toolchain
+      - name: Select Xcode 27 toolchain
         shell: bash
         run: |
           set -euo pipefail
 
           ACTIVE_XCODE_VERSION="$(xcodebuild -version)"
 
-          if grep -q '^Xcode 26' <<<"$ACTIVE_XCODE_VERSION"; then
-            echo "Xcode 26 already active"
+          if grep -q '^Xcode 27' <<<"$ACTIVE_XCODE_VERSION"; then
+            echo "Xcode 27 already active"
           else
             while IFS= read -r candidate; do
               CANDIDATE_VERSION="$(DEVELOPER_DIR="${candidate}/Contents/Developer" xcodebuild -version)"
-              grep -q '^Xcode 26' <<<"$CANDIDATE_VERSION" || continue
+              grep -q '^Xcode 27' <<<"$CANDIDATE_VERSION" || continue
               sudo xcode-select -switch "${candidate}/Contents/Developer"
               ACTIVE_XCODE_VERSION="$CANDIDATE_VERSION"
               break
@@ -54,8 +54,8 @@ jobs:
           sw_vers
 
           ACTIVE_XCODE_VERSION="$(xcodebuild -version)"
-          if ! grep -q '^Xcode 26' <<<"$ACTIVE_XCODE_VERSION"; then
-            echo "Expected Xcode 26 on the release runner, but a different toolchain is active."
+          if ! grep -q '^Xcode 27' <<<"$ACTIVE_XCODE_VERSION"; then
+            echo "Expected Xcode 27 on the release runner, but a different toolchain is active."
             exit 1
           fi
 
@@ -90,17 +90,16 @@ jobs:
           echo "build=$PROJECT_BUILD" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"
 
-      - name: Build dual-arch release artifacts
+      - name: Build release artifacts
         shell: bash
         run: ./scripts/build.sh release
 
-      - name: Verify generated DMGs
+      - name: Verify generated DMG
         shell: bash
         run: |
           set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
           test -f "releases/LiquidConvert_${VERSION}_arm64.dmg"
-          test -f "releases/LiquidConvert_${VERSION}_x86_64.dmg"
 
       - name: Create GitHub Release if missing
         env:
@@ -148,7 +147,6 @@ jobs:
 
           gh release upload "$TAG" \
             "releases/LiquidConvert_${VERSION}_arm64.dmg" \
-            "releases/LiquidConvert_${VERSION}_x86_64.dmg" \
             --clobber
 
       - name: Update appcast.xml

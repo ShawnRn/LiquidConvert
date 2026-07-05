@@ -73,7 +73,7 @@ create_dmg_with_layout() {
 if [[ -n "${BUILD_ARCHS:-}" ]]; then
     read -r -a TARGET_ARCHS <<< "${BUILD_ARCHS}"
 else
-    TARGET_ARCHS=("arm64" "x86_64")
+    TARGET_ARCHS=("arm64")
 fi
 
 # Detect version from Xcode project

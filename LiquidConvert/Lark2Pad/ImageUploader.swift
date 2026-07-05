@@ -437,6 +437,82 @@ final class ImageUploader {
             return fallback
         }
     }
+
+    private static var shouldApplyCorners: Bool {
+        if UserDefaults.standard.object(forKey: "lark2pad_round_images") == nil {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: "lark2pad_round_images")
+    }
+
+    private static func processWithoutCorners(data: Data, originalMimeType: String) -> (Data, String) {
+        if originalMimeType.contains("gif") {
+            return (data, originalMimeType)
+        }
+        
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            return (data, originalMimeType)
+        }
+        
+        let width = cgImage.width
+        let height = cgImage.height
+        
+        let maxAllowedDimension: CGFloat = 1280.0
+        guard max(CGFloat(width), CGFloat(height)) > maxAllowedDimension else {
+            return (data, originalMimeType)
+        }
+        
+        let scale = maxAllowedDimension / max(CGFloat(width), CGFloat(height))
+        let targetWidth = CGFloat(width) * scale
+        let targetHeight = CGFloat(height) * scale
+        let roundedWidth = Int(targetWidth)
+        let roundedHeight = Int(targetHeight)
+        
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let hasAlpha = cgImage.alphaInfo != .none && cgImage.alphaInfo != .noneSkipLast && cgImage.alphaInfo != .noneSkipFirst
+        let bitmapInfo = hasAlpha ? CGImageAlphaInfo.premultipliedLast.rawValue : CGImageAlphaInfo.noneSkipLast.rawValue
+        
+        guard let context = CGContext(
+            data: nil,
+            width: roundedWidth,
+            height: roundedHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo
+        ) else {
+            return (data, originalMimeType)
+        }
+        
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
+        
+        guard let scaledImage = context.makeImage() else {
+            return (data, originalMimeType)
+        }
+        
+        let mutableData = NSMutableData()
+        let outputFormat: UTType = hasAlpha ? .png : .jpeg
+        let outputMime = hasAlpha ? "image/png" : "image/jpeg"
+        
+        guard let destination = CGImageDestinationCreateWithData(
+            mutableData, outputFormat.identifier as CFString, 1, nil
+        ) else {
+            return (data, originalMimeType)
+        }
+        
+        let options: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: 0.85
+        ]
+        CGImageDestinationAddImage(destination, scaledImage, options as CFDictionary)
+        
+        guard CGImageDestinationFinalize(destination) else {
+            return (data, originalMimeType)
+        }
+        
+        print("[ImageUploader] 📏 仅缩放图片分辨率(不裁剪圆角): \(width)x\(height) -> \(roundedWidth)x\(roundedHeight)")
+        return (mutableData as Data, outputMime)
+    }
     
     /// 将图片规范化为 PNG 格式（除了 GIF）并添加精细的 iOS 贝塞尔曲线连续圆角（超椭圆）。
     /// 同时根据设计宽度动态调整圆角半径，以确保在文章排版中视觉大小一致。
@@ -444,6 +520,11 @@ final class ImageUploader {
         // GIF 动图不进行圆角处理以保证动图效果及性能
         if originalMimeType.contains("gif") {
             return (data, originalMimeType)
+        }
+
+        // 如果未开启圆角开关，则执行纯分辨率缩放规范化，不进行圆角裁剪
+        guard shouldApplyCorners else {
+            return processWithoutCorners(data: data, originalMimeType: originalMimeType)
         }
 
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),

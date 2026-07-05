@@ -18,6 +18,7 @@ struct Lark2PadFunctionView: View {
     @State private var showLoginSheet = false
     @State private var isSyncingToPad = false
     @AppStorage("lark2pad_auto_upload") private var autoUploadImages = true
+    @AppStorage("lark2pad_round_images") private var roundImages = true
     @Environment(\.colorScheme) private var colorScheme
     
     // Animation Namespace
@@ -152,11 +153,16 @@ struct Lark2PadFunctionView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 
-                Toggle("自动上传图片到私有图床", isOn: $autoUploadImages)
-                    .toggleStyle(.checkbox)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
+                HStack(spacing: 16) {
+                    Toggle("自动上传图片到私有图床", isOn: $autoUploadImages)
+                        .toggleStyle(.checkbox)
+                    
+                    Toggle("自动裁剪圆角", isOn: $roundImages)
+                        .toggleStyle(.checkbox)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
                 
                 Button(action: { showLoginSheet = true }) {
                     Label(coordinator.isLoggedIntoEtherpad ? "已登录公司账号" : "登录公司账号同步 Session", 
