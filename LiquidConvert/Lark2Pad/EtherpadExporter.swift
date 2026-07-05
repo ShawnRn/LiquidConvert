@@ -74,7 +74,7 @@ enum EtherpadExporter {
         ol > li:before { content: counters(item, ".") ". "; font-weight: bold; }
         ul { padding-left: 20px; list-style-type: disc; margin-bottom: 15px; }
         li { margin-bottom: 5px; }
-        img { max-width: 100%; margin: 10px 0; border-radius: 4px; }
+        img { max-width: 100%; margin: 10px 0; }
         strong, b { font-weight: bold; }
         </style>
         </head>

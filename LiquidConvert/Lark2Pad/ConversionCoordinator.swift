@@ -81,7 +81,7 @@ final class ConversionCoordinator: ObservableObject {
     func convert(html: String, autoUpload: Bool) async {
         pendingHTML = html
         pendingAutoUpload = autoUpload
-        await convert(html: html, autoUpload: autoUpload, uploadMode: .askBeforeCompressing)
+        await convert(html: html, autoUpload: autoUpload, uploadMode: .compressOversizedImages)
     }
 
     func retryPendingConversionWithCompression() async {
@@ -232,7 +232,7 @@ final class ConversionCoordinator: ObservableObject {
         pendingMarkdown = content
         pendingBaseDirectory = baseDirectory
         pendingAutoUpload = autoUpload
-        await convertMarkdown(content: content, baseDirectory: baseDirectory, autoUpload: autoUpload, uploadMode: .askBeforeCompressing)
+        await convertMarkdown(content: content, baseDirectory: baseDirectory, autoUpload: autoUpload, uploadMode: .compressOversizedImages)
     }
 
     private func convertMarkdown(

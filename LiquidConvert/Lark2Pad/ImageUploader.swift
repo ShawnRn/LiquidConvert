@@ -2,10 +2,14 @@ import Foundation
 import UniformTypeIdentifiers
 import ImageIO
 import CoreGraphics
+import SwiftUI
 
 /// 处理飞书图片下载并自动上传到公司私有图床的工具类
 @MainActor
 final class ImageUploader {
+    /// 静态内存缓存，用于避免在转换出错重试时重复下载和上传相同的图片
+    private static var uploadedCache: [String: String] = [:]
+
     struct OversizedImageSummary: Sendable, Equatable {
         let sourceURL: String
         let byteCount: Int
@@ -136,6 +140,13 @@ final class ImageUploader {
         behavior: UploadBehavior,
         onProgress: @escaping (Double, String) -> Void
     ) async throws -> String {
+        // 优先检查静态缓存，实现秒传，防止由于个别图片失败重试时导致全部图片重头下载上传
+        if let cachedURL = uploadedCache[url] {
+            print("[ImageUploader] ⚡️ 命中图片上传缓存: \(url) -> \(cachedURL)")
+            onProgress(1.0, "已缓存")
+            return cachedURL
+        }
+
         guard let imageURL = URL(string: url) else {
             throw UploadError.invalidUploadResponse(description: "无效图片地址")
         }
@@ -152,8 +163,8 @@ final class ImageUploader {
             let originalMimeType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? "image/png"
             let baseName = "l2p_\(UUID().uuidString.prefix(8))"
             
-            // 2. 统一转 JPEG：非 JPEG 格式（WebP/PNG/HEIC 等）全部转换，避免兼容性问题
-            let (data, mimeType) = normalizeToJPEG(data: rawData, originalMimeType: originalMimeType)
+            // 2. 处理图片并应用贝塞尔曲线圆角（对于静态图），并统一输出为 PNG 以支持透明底色
+            let (data, mimeType) = processAndApplyContinuousCorners(data: rawData, originalMimeType: originalMimeType)
             
             print("[ImageUploader] 已下载数据 (\(rawData.count / 1024) KB → \(data.count / 1024) KB \(mimeType)), 准备上传...")
 
@@ -166,12 +177,14 @@ final class ImageUploader {
             )
             
             // 2. 执行上传 (传入进度回调)
-            return try await performUpload(
+            let uploadedURL = try await performUpload(
                 data: payload.data,
                 filename: payload.filename,
                 mimeType: payload.mimeType,
                 onProgress: onProgress
             )
+            uploadedCache[url] = uploadedURL
+            return uploadedURL
         } catch {
             print("[ImageUploader] ❌ 图片下载/处理阶段失败: \(url), 错误: \(error.localizedDescription)")
             throw error
@@ -425,46 +438,103 @@ final class ImageUploader {
         }
     }
     
-    /// 将非 JPEG 图片统一转换为 JPEG 格式，确保上传兼容性
-    /// - Returns: (转换后的数据, MIME 类型)
-    private static func normalizeToJPEG(data: Data, originalMimeType: String) -> (Data, String) {
-        // 已经是 JPEG 的直接返回
-        if originalMimeType.contains("jpeg") || originalMimeType.contains("jpg") {
-            return (data, originalMimeType)
-        }
-        
-        // GIF 保留原格式（动图）
+    /// 将图片规范化为 PNG 格式（除了 GIF）并添加精细的 iOS 贝塞尔曲线连续圆角（超椭圆）。
+    /// 同时根据设计宽度动态调整圆角半径，以确保在文章排版中视觉大小一致。
+    private static func processAndApplyContinuousCorners(data: Data, originalMimeType: String) -> (Data, String) {
+        // GIF 动图不进行圆角处理以保证动图效果及性能
         if originalMimeType.contains("gif") {
             return (data, originalMimeType)
         }
-        
+
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             print("[ImageUploader] ⚠️ 无法解码图片，保留原格式上传")
             return (data, originalMimeType)
         }
+
+        let width = cgImage.width
+        let height = cgImage.height
+
+        // 限制最大展示维度在 1280px 以内（等比例缩放），以极大减小 PNG 编码体积，彻底消除超限压缩死循环及卡顿
+        let maxAllowedDimension: CGFloat = 1280.0
+        var targetWidth = CGFloat(width)
+        var targetHeight = CGFloat(height)
         
+        if max(targetWidth, targetHeight) > maxAllowedDimension {
+            let scale = maxAllowedDimension / max(targetWidth, targetHeight)
+            targetWidth = targetWidth * scale
+            targetHeight = targetHeight * scale
+            print("[ImageUploader] 📏 图片分辨率过大，等比例缩放: \(width)x\(height) -> \(Int(targetWidth))x\(Int(targetHeight))")
+        }
+
+        let roundedWidth = Int(targetWidth)
+        let roundedHeight = Int(targetHeight)
+
+        // 核心视觉一致性算法：以 800px 作为屏幕上标准展示宽度，视觉圆角半径设为 16px
+        let targetVisualRadius: CGFloat = 16.0
+        let targetDisplayWidth: CGFloat = 800.0
+        
+        let cornerRadius: CGFloat
+        if targetWidth > targetDisplayWidth {
+            // 大图会被 CSS max-width: 100% 缩放，需按比例放大裁剪的圆角半径，以保证缩放后视觉圆角仍为 16px
+            let scale = targetWidth / targetDisplayWidth
+            cornerRadius = targetVisualRadius * scale
+        } else {
+            // 小图不会被缩放，直接使用 16px；但对于特别小的图限制最大不超过宽度的 15%，最小不低于 8px
+            cornerRadius = max(8, min(targetVisualRadius, targetWidth * 0.15))
+        }
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: roundedWidth,
+            height: roundedHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            print("[ImageUploader] ⚠️ 无法创建 CGContext，保留原格式上传")
+            return (data, originalMimeType)
+        }
+
+        // 在离屏位图上下文中，直接绘制和导出 CGImage，由于没有上层 UI 系统的坐标系变换，因此不需要进行任何 Y 轴镜像翻转。
+        // 圆角矩形路径在 (0, 0, W, H) 下对称分布，直接应用即可。
+
+        // 使用 SwiftUI RoundedRectangle(..., style: .continuous) 产生完美的连续贝塞尔圆角
+        let rect = CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight)
+        let path = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).path(in: rect).cgPath
+
+        context.addPath(path)
+        context.clip()
+
+        // 绘制图片
+        context.draw(cgImage, in: rect)
+
+        guard let roundedCGImage = context.makeImage() else {
+            print("[ImageUploader] ⚠️ 制作圆角 CGImage 失败，保留原格式")
+            return (data, originalMimeType)
+        }
+
+        // 转换为 PNG（以支持透明度）
         let mutableData = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(
-            mutableData, UTType.jpeg.identifier as CFString, 1, nil
+            mutableData, UTType.png.identifier as CFString, 1, nil
         ) else {
-            print("[ImageUploader] ⚠️ 无法创建 JPEG 编码器，保留原格式上传")
+            print("[ImageUploader] ⚠️ 无法创建 PNG 编码器，保留原格式")
             return (data, originalMimeType)
         }
-        
-        let options: [CFString: Any] = [
-            kCGImageDestinationLossyCompressionQuality: 0.85
-        ]
-        CGImageDestinationAddImage(destination, cgImage, options as CFDictionary)
-        
+
+        CGImageDestinationAddImage(destination, roundedCGImage, nil)
+
         guard CGImageDestinationFinalize(destination) else {
-            print("[ImageUploader] ⚠️ JPEG 编码失败，保留原格式上传")
+            print("[ImageUploader] ⚠️ 导出为 PNG 失败，保留原格式")
             return (data, originalMimeType)
         }
-        
-        let jpegData = mutableData as Data
-        print("[ImageUploader] 🔄 \(originalMimeType) → image/jpeg (\(data.count / 1024) KB → \(jpegData.count / 1024) KB)")
-        return (jpegData, "image/jpeg")
+
+        let pngData = mutableData as Data
+        print("[ImageUploader] 🔄 已成功应用贝塞尔曲线圆角并转换为 PNG (\(data.count / 1024) KB → \(pngData.count / 1024) KB), 圆角半径: \(Int(cornerRadius))px")
+        return (pngData, "image/png")
     }
     
     static func sanitizeFilename(_ filename: String) -> String {
