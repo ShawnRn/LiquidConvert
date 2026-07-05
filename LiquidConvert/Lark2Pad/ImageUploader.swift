@@ -22,6 +22,12 @@ final class ImageUploader {
         defer { cacheLock.unlock() }
         uploadedCache[url] = uploadedURL
     }
+    
+    private struct DownloadResult: Sendable {
+        let data: Data
+        let statusCode: Int
+        let mimeType: String
+    }
 
     struct OversizedImageSummary: Sendable, Equatable {
         let sourceURL: String
@@ -165,15 +171,21 @@ final class ImageUploader {
         }
         
         do {
-            // 1. 下载图片数据
-            let (rawData, response) = try await session.data(from: imageURL)
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard statusCode == 200 else { 
-                print("[ImageUploader] ❌ 下载失败: \(url), 状态码: \(statusCode)")
-                throw UploadError.uploadRejected(statusCode: statusCode, description: "原图下载失败") 
+            // 1. 下载图片数据 (引入 withTimeout 30秒限时保护，防止下载在 data_stall 网络环境下挂死)
+            let downloadResult = try await withTimeout(seconds: 30.0) {
+                let (rawData, response) = try await session.data(from: imageURL)
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+                let mimeType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? "image/png"
+                return DownloadResult(data: rawData, statusCode: statusCode, mimeType: mimeType)
             }
             
-            let originalMimeType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? "image/png"
+            guard downloadResult.statusCode == 200 else { 
+                print("[ImageUploader] ❌ 下载失败: \(url), 状态码: \(downloadResult.statusCode)")
+                throw UploadError.uploadRejected(statusCode: downloadResult.statusCode, description: "原图下载失败") 
+            }
+            
+            let rawData = downloadResult.data
+            let originalMimeType = downloadResult.mimeType
             let baseName = "l2p_\(UUID().uuidString.prefix(8))"
             
             // 2. 处理图片并应用贝塞尔曲线圆角（对于静态图），并统一输出为 PNG 以支持透明底色
