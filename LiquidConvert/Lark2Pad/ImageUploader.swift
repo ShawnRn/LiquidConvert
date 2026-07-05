@@ -343,43 +343,47 @@ final class ImageUploader {
         }
         
         do {
-            let (responseData, response) = try await session.upload(for: request, from: body, delegate: delegate)
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-            let responseString = String(data: responseData, encoding: .utf8) ?? "空响应"
-            
-            if statusCode == 200 || statusCode == 201 {
-                if let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
-                   let resultUrl = json["url"] as? String {
-                    print("[ImageUploader] ✅ 上传成功 (JSON): \(resultUrl)")
-                    ImageGalleryStore.shared.recordUpload(
-                        url: resultUrl,
-                        filename: sanitizedName,
-                        mimeType: mimeType,
-                        byteCount: data.count
-                    )
-                    return resultUrl
-                }
+            let responseString = try await withTimeout(seconds: 30.0) {
+                let (responseData, response) = try await session.upload(for: request, from: body, delegate: delegate)
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+                let responseStr = String(data: responseData, encoding: .utf8) ?? "空响应"
                 
-                var finalUrl = responseString.trimmingCharacters(in: .whitespacesAndNewlines)
-                if finalUrl.hasPrefix("\"") && finalUrl.hasSuffix("\"") {
-                    finalUrl = String(finalUrl.dropFirst().dropLast())
+                guard statusCode == 200 || statusCode == 201 else {
+                    print("[ImageUploader] ❌ 服务器拒绝 (\(statusCode)): \(responseStr)")
+                    throw UploadError.uploadRejected(statusCode: statusCode, description: responseStr)
                 }
-                
-                if finalUrl.hasPrefix("http") {
-                    print("[ImageUploader] ✅ 上传成功 (String): \(finalUrl)")
-                    ImageGalleryStore.shared.recordUpload(
-                        url: finalUrl,
-                        filename: sanitizedName,
-                        mimeType: mimeType,
-                        byteCount: data.count
-                    )
-                    return finalUrl
-                }
-                throw UploadError.invalidUploadResponse(description: responseString)
-            } else {
-                print("[ImageUploader] ❌ 服务器拒绝 (\(statusCode)): \(responseString)")
-                throw UploadError.uploadRejected(statusCode: statusCode, description: responseString)
+                return responseStr
             }
+            
+            if let responseData = responseString.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+               let resultUrl = json["url"] as? String {
+                print("[ImageUploader] ✅ 上传成功 (JSON): \(resultUrl)")
+                ImageGalleryStore.shared.recordUpload(
+                    url: resultUrl,
+                    filename: sanitizedName,
+                    mimeType: mimeType,
+                    byteCount: data.count
+                )
+                return resultUrl
+            }
+            
+            var finalUrl = responseString.trimmingCharacters(in: .whitespacesAndNewlines)
+            if finalUrl.hasPrefix("\"") && finalUrl.hasSuffix("\"") {
+                finalUrl = String(finalUrl.dropFirst().dropLast())
+            }
+            
+            if finalUrl.hasPrefix("http") {
+                print("[ImageUploader] ✅ 上传成功 (String): \(finalUrl)")
+                ImageGalleryStore.shared.recordUpload(
+                    url: finalUrl,
+                    filename: sanitizedName,
+                    mimeType: mimeType,
+                    byteCount: data.count
+                )
+                return finalUrl
+            }
+            throw UploadError.invalidUploadResponse(description: responseString)
         } catch {
             print("[ImageUploader] ⚠️ 上传阶段网络错误 (重试 \(retryCount)/\(maxRetries)): \(error.localizedDescription)")
             if retryCount < maxRetries, shouldRetry(for: error) {
@@ -388,6 +392,25 @@ final class ImageUploader {
             } else {
                 throw error
             }
+        }
+    }
+
+    /// 在指定的秒数内执行异步块，如果超时则主动取消并抛出 Timeout 错误，防止 URLSession data_stall 挂起不退出
+    private static func withTimeout<T: Sendable>(
+        seconds: Double,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(seconds))
+                throw URLError(.timedOut, userInfo: [NSLocalizedDescriptionKey: "请求执行超时（安全限制 \(seconds) 秒）"])
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
     }
 
@@ -661,7 +684,7 @@ final class ImageUploader {
 }
 
 /// 内部 Delegate 用于捕获上传进度
-private class UploadProgressDelegate: NSObject, URLSessionTaskDelegate {
+private final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     var onProgress: ((Int64, Int64) -> Void)?
     private let startTime = Date()
     
