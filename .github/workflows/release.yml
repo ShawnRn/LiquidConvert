@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-15
+    runs-on: macos-27
     env:
       HOMEBREW_NO_AUTO_UPDATE: 1
       HOMEBREW_NO_INSTALL_CLEANUP: 1
@@ -30,34 +30,43 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Select Xcode 16 toolchain
+      - name: Select latest Xcode toolchain
         shell: bash
         run: |
           set -euo pipefail
 
-          ACTIVE_XCODE_VERSION="$(xcodebuild -version)"
+          echo "==> Finding all installed Xcode applications..."
+          candidates=()
+          while IFS= read -r app; do
+            if [[ -d "$app/Contents/Developer" ]]; then
+              version=$(DEVELOPER_DIR="$app/Contents/Developer" xcodebuild -version | awk '/Xcode/ {print $2}')
+              candidates+=("$version|$app")
+            fi
+          done < <(find /Applications -maxdepth 1 -name 'Xcode*.app')
 
-          if grep -q '^Xcode 16' <<<"$ACTIVE_XCODE_VERSION"; then
-            echo "Xcode 16 already active"
-          else
-            while IFS= read -r candidate; do
-              CANDIDATE_VERSION="$(DEVELOPER_DIR="${candidate}/Contents/Developer" xcodebuild -version)"
-              grep -q '^Xcode 16' <<<"$CANDIDATE_VERSION" || continue
-              sudo xcode-select -switch "${candidate}/Contents/Developer"
-              ACTIVE_XCODE_VERSION="$CANDIDATE_VERSION"
-              break
-            done < <(find /Applications -maxdepth 1 -name 'Xcode*.app' | sort -V)
+          if [[ ${#candidates[@]} -eq 0 ]]; then
+            echo "ERROR: No Xcode installation found in /Applications"
+            exit 1
           fi
 
+          # 按照版本号自然排序，选择最新版本
+          sorted_candidates=($(for c in "${candidates[@]}"; do echo "$c"; done | sort -V))
+          best_candidate="${sorted_candidates[-1]}"
+          best_version="${best_candidate%%|*}"
+          best_path="${best_candidate##*|}"
+
+          echo "==> Installed Xcode versions:"
+          for c in "${sorted_candidates[@]}"; do
+            echo "  - ${c%%|*} at ${c##*|}"
+          done
+
+          echo "==> Selecting the newest Xcode: Version $best_version at $best_path"
+          sudo xcode-select -switch "$best_path/Contents/Developer"
+
+          echo "==> Currently active Xcode information:"
           xcodebuild -version
           xcrun --sdk macosx --show-sdk-version
           sw_vers
-
-          ACTIVE_XCODE_VERSION="$(xcodebuild -version)"
-          if ! grep -q '^Xcode 16' <<<"$ACTIVE_XCODE_VERSION"; then
-            echo "Expected Xcode 16 on the release runner, but a different toolchain is active."
-            exit 1
-          fi
 
       - name: Install DMG packager
         shell: bash
