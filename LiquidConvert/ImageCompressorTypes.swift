@@ -70,4 +70,5 @@ struct ImageCompressionOptions: Sendable {
     var gifFrameRate: Int? = nil
     var gifColorDepth: Int? = nil
     var gifCompressionPriority: GIFCompressionPriority? = nil
+    var applyRoundedCorners: Bool = false
 }

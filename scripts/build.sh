@@ -39,19 +39,21 @@ create_dmg_with_layout() {
     xattr -cr "${staging_dir}/${display_app_name}" || true
     find "${staging_dir}/${display_app_name}" -name ".DS_Store" -depth -exec rm {} \; 2>/dev/null || true
 
-    if command -v create-dmg >/dev/null 2>&1; then
-        echo "==> Creating styled DMG with create-dmg for ${target_arch}..."
-        rm -f "${styled_dmg_path}"
-        create-dmg \
-            --overwrite \
-            --dmg-title "${PROJECT_NAME}" \
-            --no-code-sign \
-            "${staging_dir}/${display_app_name}" \
-            "${dmg_dir}" || echo "Warning: create-dmg failed, falling back to hdiutil..."
-
+    # 强制使用 Sindre Sorhus 的 npm 版 create-dmg 以获取默认的背景与箭头
+    echo "==> Creating styled DMG with npx create-dmg for ${target_arch}..."
+    rm -f "${dmg_path}"
+    if npx -y --package=create-dmg create-dmg \
+        --overwrite \
+        --dmg-title="${PROJECT_NAME}" \
+        --no-code-sign \
+        "${staging_dir}/${display_app_name}" \
+        "${dmg_dir}"; then
+        
         if [[ -f "${styled_dmg_path}" && "${styled_dmg_path}" != "${dmg_path}" ]]; then
             mv -f "${styled_dmg_path}" "${dmg_path}"
         fi
+    else
+        echo "Warning: npx create-dmg failed, falling back to hdiutil..."
     fi
 
     if [[ ! -f "${dmg_path}" ]]; then

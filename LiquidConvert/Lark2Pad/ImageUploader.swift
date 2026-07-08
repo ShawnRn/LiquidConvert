@@ -371,12 +371,6 @@ final class ImageUploader {
                let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
                let resultUrl = json["url"] as? String {
                 print("[ImageUploader] ✅ 上传成功 (JSON): \(resultUrl)")
-                ImageGalleryStore.shared.recordUpload(
-                    url: resultUrl,
-                    filename: sanitizedName,
-                    mimeType: mimeType,
-                    byteCount: data.count
-                )
                 return resultUrl
             }
             
@@ -387,12 +381,6 @@ final class ImageUploader {
             
             if finalUrl.hasPrefix("http") {
                 print("[ImageUploader] ✅ 上传成功 (String): \(finalUrl)")
-                ImageGalleryStore.shared.recordUpload(
-                    url: finalUrl,
-                    filename: sanitizedName,
-                    mimeType: mimeType,
-                    byteCount: data.count
-                )
                 return finalUrl
             }
             throw UploadError.invalidUploadResponse(description: responseString)

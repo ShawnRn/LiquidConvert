@@ -36,6 +36,7 @@ struct ImageCompressionView: View, Sendable {
     @AppStorage("compress_auto_5mb") private var autoCompressTo5MB = false
     @AppStorage("compress_del_orig") private var deleteOriginal = false
     @AppStorage("compress_target_format") private var targetFormat: ImageConverter.TargetFormat = .jpeg
+    @AppStorage("compress_apply_rounded_corners") private var applyRoundedCorners = false
 
     // 状态
     @State private var isProcessing = false
@@ -149,6 +150,9 @@ struct ImageCompressionView: View, Sendable {
                             }
                         }
                         .disabled(isProcessing)
+                        
+                        Toggle("添加圆角 (2% 比例)", isOn: $applyRoundedCorners)
+                            .disabled(isProcessing)
                         
                         Picker("尺寸调整", selection: $resizeModeOption) {
                             ForEach(ResizeModeOption.allCases, id: \.self) { mode in
@@ -449,7 +453,8 @@ struct ImageCompressionView: View, Sendable {
             quality: qualityMode == .auto ? 0.8 : quality,
             deleteOriginal: deleteOriginal,
             autoCompressTo5MB: autoCompressTo5MB,
-            targetFormat: outputFormat
+            targetFormat: outputFormat,
+            applyRoundedCorners: applyRoundedCorners
         )
 
         Task {

@@ -425,6 +425,15 @@ struct Lark2PadFunctionView: View {
             .tint(.blue)
             .controlSize(.large)
 
+            Button(action: copyToWeChat) {
+                Label("复制到公众号", systemImage: "paperplane.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+            .controlSize(.large)
+            .disabled(coordinator.markdownResult.isEmpty || coordinator.previewHTML.isEmpty)
+
             Button(action: { showExporter = true }) {
                 Label("保存 HTML", systemImage: "arrow.down.doc")
                     .frame(maxWidth: .infinity)
@@ -555,6 +564,15 @@ struct Lark2PadFunctionView: View {
         pb.setString(coordinator.etherpadHTML, forType: .html)
         pb.setString(coordinator.etherpadHTML, forType: .string)
         showToast("Etherpad 格式已复制！")
+    }
+
+    private func copyToWeChat() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        // 将预览 HTML 同时写入 .html 和 .string，以使直接在微信公众号编辑器粘贴时自动解析为富文本样式
+        pb.setString(coordinator.previewHTML, forType: .html)
+        pb.setString(coordinator.previewHTML, forType: .string)
+        showToast("已成功复制富文本！可直接在公众号编辑器中 ⌘V 粘贴。")
     }
 
     private func syncToPad() {

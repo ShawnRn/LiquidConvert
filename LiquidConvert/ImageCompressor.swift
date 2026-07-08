@@ -8,6 +8,7 @@
 import AppKit
 import Foundation
 import ImageIO
+import SwiftUI
 import UniformTypeIdentifiers
 
 
@@ -62,11 +63,12 @@ struct ImageCompressor {
             let targetFormat = options.targetFormat ?? determineOutputFormat(from: ext)
             let fileSize = getFileSize(url: inputURL) ?? 0
             
-            // 🔥 智能跳过逻辑：如果格式不需要改变，且已经小于 5MB，且不需要调整尺寸 -> 直接原样输出
+            // 🔥 智能跳过逻辑：如果格式不需要改变，且已经小于 5MB，且不需要调整尺寸，且未启用圆角 -> 直接原样输出
             // 杜绝无效处理导致的文件变大
             if targetFormat == determineOutputFormat(from: ext) && 
                fileSize <= 4_800_000 && 
-               options.resizeMode == .none {
+               options.resizeMode == .none &&
+               !options.applyRoundedCorners {
                 print("⏭️ 智能跳过: \(inputURL.lastPathComponent) (已达标)")
                 
                 let outputURL = generateOutputURL(from: inputURL, targetExtension: ext)
@@ -100,6 +102,11 @@ struct ImageCompressor {
         var workingImage = cgImage
         if options.resizeMode != .none {
             workingImage = try resizeImage(cgImage: cgImage, resizeMode: options.resizeMode)
+        }
+
+        // 应用圆角处理
+        if options.applyRoundedCorners {
+            workingImage = try applyContinuousCorners(to: workingImage)
         }
 
         // 2. 确定输出格式
@@ -163,8 +170,14 @@ struct ImageCompressor {
         progressCallback: ((String) -> Void)? = nil
     ) throws -> URL {
         let targetSizeBytes: Int64 = 4_800_000  // 4.8MB (十进制，匹配macOS显示)
-        let originalWidth = cgImage.width
-        let originalHeight = cgImage.height
+        
+        var workingImage = cgImage
+        if options.applyRoundedCorners {
+            workingImage = try applyContinuousCorners(to: workingImage)
+        }
+
+        let originalWidth = workingImage.width
+        let originalHeight = workingImage.height
 
         progressCallback?("🤖 智能压缩: \(originalWidth)×\(originalHeight)")
         print(
@@ -174,12 +187,15 @@ struct ImageCompressor {
         // 无损格式只能调整分辨率
         let isLossless = (format == .png || format == .tiff)
 
+        // 如果应用了圆角，需要传入 source 为 nil，以防止有损智能压缩在 resizeImage 时使用 source 重新从源文件加载未加圆角的缩略图
+        let effectiveSource = options.applyRoundedCorners ? nil : source
+
         if isLossless {
             print("📌 无损格式，仅调整分辨率")
             return try smartCompressLossless(
                 inputURL: inputURL,
-                source: source,
-                cgImage: cgImage,
+                source: effectiveSource,
+                cgImage: workingImage,
                 properties: properties,
                 format: format,
                 targetSize: targetSizeBytes,
@@ -190,8 +206,8 @@ struct ImageCompressor {
             print("📌 有损格式，调整分辨率和质量")
             return try smartCompressLossy(
                 inputURL: inputURL,
-                source: source,
-                cgImage: cgImage,
+                source: effectiveSource,
+                cgImage: workingImage,
                 properties: properties,
                 format: format,
                 targetSize: targetSizeBytes,
@@ -516,6 +532,43 @@ struct ImageCompressor {
         }
 
         return resizedImage
+    }
+
+    /// 给 CGImage 应用贝塞尔曲线圆角（圆角比例为宽度的 2%，与 Lark2Pad 逻辑一致）
+    nonisolated private static func applyContinuousCorners(to cgImage: CGImage) throws -> CGImage {
+        let width = cgImage.width
+        let height = cgImage.height
+        let cornerRadius = CGFloat(width) * 0.02
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw NSError(
+                domain: "ImageCompressor", code: -70,
+                userInfo: [NSLocalizedDescriptionKey: "无法创建圆角上下文"])
+        }
+
+        let rect = CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height))
+        let path = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).path(in: rect).cgPath
+
+        context.addPath(path)
+        context.clip()
+        context.draw(cgImage, in: rect)
+
+        guard let roundedImage = context.makeImage() else {
+            throw NSError(
+                domain: "ImageCompressor", code: -71,
+                userInfo: [NSLocalizedDescriptionKey: "应用圆角裁剪失败"])
+        }
+
+        return roundedImage
     }
 
     /// GIF 分辨率调整和压缩（保持 GIF 格式和动画）
