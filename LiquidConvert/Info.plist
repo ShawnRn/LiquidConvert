@@ -59,7 +59,7 @@
 		</dict>
 	</array>
 	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/ShawnRn/LiquidConvert/main/appcast.xml</string>
+	<string>https://cdn.jsdelivr.net/gh/ShawnRn/LiquidConvert@main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>bjptNX8PlJbdwtszqi3/BAHV4TYyZ3UuV1EMANJ+GaY=</string>
 	<key>SUEnableAutomaticChecks</key>

@@ -85,17 +85,15 @@ if curl -L --fail --retry 5 --retry-delay 2 --retry-all-errors -o "$REMOTE_ARM64
     REMOTE_SHA_ARM64=$(shasum -a 256 "$REMOTE_ARM64" | awk '{print $1}')
 
     if [ "$LOCAL_SHA_ARM64" != "$REMOTE_SHA_ARM64" ]; then
-        echo "警告: GitHub Release 实际下载到的资产与本地 DMG 不一致，将以远端资产为准生成 appcast 签名。"
+        echo "警告: GitHub Release 实际下载到的资产与本地 DMG 不一致。"
         echo "arm64 local:  $LOCAL_SHA_ARM64"
         echo "arm64 remote: $REMOTE_SHA_ARM64"
-        SIGN_SOURCE_ARM64="$REMOTE_ARM64"
-    else
-        SIGN_SOURCE_ARM64="$DMG_ARM64"
     fi
 else
-    echo "警告: 无法下载 GitHub Release 资产，回退为本地 DMG 生成 appcast 签名。"
-    SIGN_SOURCE_ARM64="$DMG_ARM64"
+    echo "警告: 无法下载 GitHub Release 资产。"
 fi
+# 始终以本地最新构建的 DMG 资产为准生成 appcast 签名
+SIGN_SOURCE_ARM64="$DMG_ARM64"
 
 echo "正在生成 EdDSA 签名..."
 sign_update_file() {
