@@ -1,5 +1,8 @@
 # macOS
 .DS_Store
+LiquidConvert.Windows/bin/
+LiquidConvert.Windows/obj/
+artifacts/
 .Trashes
 .AppleDouble
 .LSOverride

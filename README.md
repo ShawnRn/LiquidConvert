@@ -24,6 +24,16 @@
 
 Designed with a premium "Liquid Glass" aesthetic, it utilizes standard macOS visual effects (`NSVisualEffectView`) to provide a translucent, native feel that blends perfectly with your workspace.
 
+## Windows x64 edition
+
+LiquidConvert now includes a native Windows x64 edition in [`LiquidConvert.Windows`](./LiquidConvert.Windows). It is built with WinUI 3, Windows App SDK 2.2, per-monitor DPI awareness, and a self-contained runtime.
+
+- Image conversion, compression, stitching, icon creation, audio extraction, video-to-GIF, and document-to-Markdown tools.
+- Lark2Pad with clipboard and Markdown import, drag-and-drop, Etherpad export/sync, and rich-text copying for WeChat Official Accounts.
+- A bilingual (English / Simplified Chinese) Windows installer that creates a Start Menu shortcut by default and offers desktop shortcut and launch-on-finish choices.
+
+For development and installer instructions, see [the Windows README](./LiquidConvert.Windows/README.md).
+
 ## ✨ Core Features
 
 ### 1. 🧩 Smart Image Stitching
