@@ -69,6 +69,7 @@ public sealed partial class MainWindow : Window
             "video" => ("MEDIA TOOLS", "视频 GIF", "将视频转换为高质量 GIF 动图。", "选择视频文件", "默认 15 FPS、最长边 720px，可用于快速分享。", "生成 GIF"),
             "icon" => ("ICON TOOLS", "Windows 图标", "将图片转换为 Windows .ico 图标。", "选择一张 PNG 或 JPEG", "输出包含 256px PNG 图层的现代 Windows 图标。", "生成 ICO"),
             "document" => ("DOCUMENT TOOLS", "AI 文档提取", "将文本或 HTML 文档导出为 Markdown。", "选择文本或 HTML 文件", "保留可读文本与基础段落结构，更多格式持续接入。", "导出 Markdown"),
+            "shutter" => ("IMAGE TOOLS", "快门检测", "解析各大品牌相机 RAW 与 JPG 直出照片中的硬件快门计数。", "选择相机照片进行检测", "支持拖入或选择 Sony ARW、Nikon NEF、Canon CR2/CR3、Fujifilm RAF、Olympus ORF 及直出 JPG。", "检测快门数"),
             "lark" => ("DOCUMENT TOOLS", "Lark2Pad", "将飞书剪贴板内容导出为 Etherpad 兼容 HTML。", "复制飞书文档内容后开始", "直接读取剪贴板中的富文本 HTML 并导出；登录同步随后接入。", "导出剪贴板 HTML"),
             _ => ("IMAGE TOOLS", "图片转换", "快速将图片转换为常用格式，所有文件均在本机处理。", "选择需要转换的图片", "支持拖入文件，或从本地选择 PNG、JPEG、WebP、HEIC 等格式。", "转换为 PNG")
         };
@@ -181,6 +182,18 @@ public sealed partial class MainWindow : Window
                 case "document":
                     foreach (var file in _files) await _documentService.ExportMarkdownAsync(file, output);
                     break;
+                case "shutter":
+                    var results = new List<string>();
+                    foreach (var file in _files)
+                    {
+                        var res = await CameraShutterCountService.Instance.ParseAsync(file);
+                        if (res.ShutterCount.HasValue)
+                            results.Add($"{res.FileName}: 快门数 {res.ShutterCount.Value:N0} ({res.CameraMake} {res.CameraModel})");
+                        else
+                            results.Add($"{res.FileName}: {res.StatusMessage}");
+                    }
+                    ShowStatus(InfoBarSeverity.Informational, string.Join("\n", results));
+                    return;
                 default:
                     foreach (var file in _files) await _imageService.ConvertToPngAsync(file, output);
                     break;
@@ -424,6 +437,7 @@ public sealed partial class MainWindow : Window
         SetNavigationAppearance(NavVideo, mode == "video");
         SetNavigationAppearance(NavIcon, mode == "icon");
         SetNavigationAppearance(NavDocument, mode == "document");
+        SetNavigationAppearance(NavShutter, mode == "shutter");
         SetNavigationAppearance(NavLark, mode == "lark");
     }
 

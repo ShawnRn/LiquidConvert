@@ -56,6 +56,9 @@
                     <Button x:Name="NavDocument" Tag="document" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
                         <StackPanel Orientation="Horizontal" Spacing="13"><FontIcon Glyph="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="17" /><TextBlock Text="AI 文档提取" FontSize="14" /></StackPanel>
                     </Button>
+                    <Button x:Name="NavShutter" Tag="shutter" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="13"><FontIcon Glyph="&#xE722;" FontFamily="Segoe MDL2 Assets" FontSize="17" /><TextBlock Text="快门检测" FontSize="14" /></StackPanel>
+                    </Button>
                     <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="24,16" />
                     <TextBlock Text="文档" Margin="40,6,0,9" FontSize="11" FontWeight="SemiBold" Opacity="0.52" />
                     <Button x:Name="NavLark" Tag="lark" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
