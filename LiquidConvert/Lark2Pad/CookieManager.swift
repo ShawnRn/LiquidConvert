@@ -10,7 +10,7 @@ final class CookieManager {
     
     private init() {
         self.cachedCookies = loadFromDisk()
-        print("[CookieManager] 初始化，从磁盘加载了 \(cachedCookies.count) 条 Cookie")
+        fputs("[CookieManager] 初始化，从磁盘加载了 \(cachedCookies.count) 条 Cookie\n", stderr)
     }
     
     /// 从 WebView 数据存储中提取特定域名的 Cookie

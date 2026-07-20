@@ -77,7 +77,14 @@ enum LiquidConvertCLIInstaller {
     private static var wrapperScript: String {
         """
         #!/bin/zsh
-        exec "\(currentExecutablePath)" --extract-markdown "$@"
+        case "$1" in
+          --extract-markdown|--install-cli|--cli-status|--lark2pad-export|--lark2pad-sync)
+            exec "\(currentExecutablePath)" "$@"
+            ;;
+          *)
+            exec "\(currentExecutablePath)" --extract-markdown "$@"
+            ;;
+        esac
         """
     }
 
@@ -103,6 +110,10 @@ enum AIDocumentCLI {
         switch first {
         case "--extract-markdown":
             runExtractionAndExit(Array(userArgs.dropFirst()))
+        case "--lark2pad-export":
+            runLark2PadExportAndExit(Array(userArgs.dropFirst()))
+        case "--lark2pad-sync":
+            runLark2PadSyncAndExit(Array(userArgs.dropFirst()))
         case "--install-cli":
             do {
                 let url = try LiquidConvertCLIInstaller.installCLI()
@@ -184,6 +195,148 @@ enum AIDocumentCLI {
         dispatchMain()
     }
 
+    private static func runLark2PadExportAndExit(_ args: [String]) {
+        AIDocumentRuntimeMode.isCLI = true
+        guard let parsed = parseLark2PadArguments(args, requiresOutputDirectory: true) else {
+            Foundation.exit(2)
+        }
+        do {
+            let markdown = try String(contentsOf: parsed.source, encoding: .utf8)
+            let normalized = EtherpadExporter.normalizeMarkdownSpacing(markdown)
+            let outputDirectory = parsed.outputDirectory!
+            try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+            let stem = parsed.source.deletingPathExtension().lastPathComponent
+            let markdownURL = outputDirectory.appendingPathComponent("\(stem).normalized.md")
+            let wechatURL = outputDirectory.appendingPathComponent("\(stem).wechat.html")
+            let etherpadURL = outputDirectory.appendingPathComponent("\(stem).etherpad.html")
+            try (normalized + "\n").write(to: markdownURL, atomically: true, encoding: .utf8)
+            try EtherpadExporter.buildRenderedHTML(from: normalized).write(to: wechatURL, atomically: true, encoding: .utf8)
+            try EtherpadExporter.buildRawHTML(from: normalized).write(to: etherpadURL, atomically: true, encoding: .utf8)
+            printJSON([
+                "ok": true,
+                "markdown_path": markdownURL.path,
+                "wechat_html_path": wechatURL.path,
+                "etherpad_html_path": etherpadURL.path,
+                "image_count": imageCount(in: normalized),
+                "login_required": false,
+            ])
+            Foundation.exit(0)
+        } catch {
+            emitLark2PadError(error)
+        }
+    }
+
+    private static func runLark2PadSyncAndExit(_ args: [String]) {
+        AIDocumentRuntimeMode.isCLI = true
+        guard let parsed = parseLark2PadArguments(args, requiresOutputDirectory: false) else {
+            Foundation.exit(2)
+        }
+        Task.detached(priority: .userInitiated) {
+            do {
+                let markdown = try String(contentsOf: parsed.source, encoding: .utf8)
+                let normalized = EtherpadExporter.normalizeMarkdownSpacing(markdown)
+                let html = EtherpadExporter.buildRawHTML(from: normalized)
+                let result = try await EtherpadSyncService.sync(
+                    markdown: normalized,
+                    html: html,
+                    preferredPadID: parsed.padTitle
+                )
+                printJSON([
+                    "ok": true,
+                    "pad_id": result.padID,
+                    "pad_url": result.url.absoluteString,
+                    "renamed": result.renamed,
+                    "image_count": imageCount(in: normalized),
+                    "login_required": false,
+                ])
+                Foundation.exit(0)
+            } catch {
+                emitLark2PadError(error)
+            }
+        }
+        dispatchMain()
+    }
+
+    private struct Lark2PadArguments: Sendable {
+        let source: URL
+        let outputDirectory: URL?
+        let padTitle: String?
+    }
+
+    private static func parseLark2PadArguments(
+        _ args: [String],
+        requiresOutputDirectory: Bool
+    ) -> Lark2PadArguments? {
+        guard let first = args.first, !first.hasPrefix("--") else {
+            fputs("Please provide a Markdown file path.\n", stderr)
+            return nil
+        }
+        let source = expandPath(first)
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            fputs("Markdown file does not exist: \(source.path)\n", stderr)
+            return nil
+        }
+        var outputDirectory: URL?
+        var padTitle: String?
+        var index = 1
+        while index < args.count {
+            switch args[index] {
+            case "--output-dir":
+                guard index + 1 < args.count else { fputs("Missing value for --output-dir.\n", stderr); return nil }
+                outputDirectory = expandPath(args[index + 1])
+                index += 2
+            case "--pad-title":
+                guard index + 1 < args.count else { fputs("Missing value for --pad-title.\n", stderr); return nil }
+                padTitle = args[index + 1]
+                index += 2
+            case "--json":
+                index += 1
+            default:
+                fputs("Unexpected argument: \(args[index])\n", stderr)
+                return nil
+            }
+        }
+        if requiresOutputDirectory && outputDirectory == nil {
+            fputs("--output-dir is required for --lark2pad-export.\n", stderr)
+            return nil
+        }
+        return Lark2PadArguments(source: source, outputDirectory: outputDirectory, padTitle: padTitle)
+    }
+
+    private static func imageCount(in markdown: String) -> Int {
+        let pattern = #"!\[[^\]]*\]\([^)]+\)|<img\b[^>]*>"#
+        let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        return regex?.numberOfMatches(
+            in: markdown,
+            range: NSRange(markdown.startIndex..<markdown.endIndex, in: markdown)
+        ) ?? 0
+    }
+
+    private static func emitLark2PadError(_ error: Error) -> Never {
+        let loginRequired: Bool
+        if let syncError = error as? EtherpadSyncService.SyncError,
+           case .missingSession = syncError {
+            loginRequired = true
+        } else {
+            loginRequired = false
+        }
+        printJSON([
+            "ok": false,
+            "error": error.localizedDescription,
+            "login_required": loginRequired,
+        ])
+        Foundation.exit(1)
+    }
+
+    private static func printJSON(_ value: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else {
+            fputs("Unable to encode JSON result.\n", stderr)
+            return
+        }
+        print(text)
+    }
+
     private static func makeSource(from value: String) -> AIDocumentSource? {
         if let url = URL(string: value), let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
             return .link(url)
@@ -204,9 +357,11 @@ enum AIDocumentCLI {
             Usage:
               liquidconvert <URL-or-file> [--output output.md]
               LiquidConvert --extract-markdown <URL-or-file> [--output output.md]
+              liquidconvert --lark2pad-export <markdown> --output-dir <dir> --json
+              liquidconvert --lark2pad-sync <markdown> --pad-title <title> --json
               LiquidConvert --install-cli
 
-            Converts URL, PDF, Word, Excel, PPT, HTML, text, and image files to Markdown.
+            Converts source files to Markdown and exports or syncs Lark2Pad artifacts.
             """
         )
     }

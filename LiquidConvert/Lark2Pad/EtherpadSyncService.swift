@@ -37,7 +37,7 @@ enum EtherpadSyncService {
 
     private static let syncedPadIDsKey = "lark2pad_synced_pad_ids"
 
-    static func sync(markdown: String, html: String) async throws -> SyncResult {
+    static func sync(markdown: String, html: String, preferredPadID: String? = nil) async throws -> SyncResult {
         let trimmedHTML = html.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedHTML.isEmpty else {
             throw SyncError.emptyDocument
@@ -48,7 +48,8 @@ enum EtherpadSyncService {
             throw SyncError.missingSession
         }
 
-        let basePadID = suggestedPadID(from: markdown)
+        let requestedPadID = preferredPadID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let basePadID = requestedPadID.map(sanitizePadID) ?? suggestedPadID(from: markdown)
         let padID = nextAvailablePadID(basePadID)
         let encodedPadID = try encodedPathComponent(padID)
         guard let importURL = URL(string: "\(SecureRuntimeConfig.etherpadBaseURL)/p/\(encodedPadID)/import"),
