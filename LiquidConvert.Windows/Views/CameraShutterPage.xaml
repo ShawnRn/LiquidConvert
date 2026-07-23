@@ -1,0 +1,174 @@
+<Page
+    x:Class="LiquidConvert.Windows.Views.CameraShutterPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid RowSpacing="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶部 Header -->
+        <Grid>
+            <StackPanel Spacing="6">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="EXIF 信息摘要" FontSize="24" FontWeight="SemiBold" />
+                    <Border Background="#100F6CBD" CornerRadius="12" Padding="10,3" VerticalAlignment="Center">
+                        <TextBlock Text="Shutter Count" Foreground="#0F6CBD" FontSize="11" FontWeight="Bold" />
+                    </Border>
+                </StackPanel>
+                <TextBlock Text="提取相机机械快门次数、机身序列号及核心拍摄 EXIF 属性数据。" FontSize="14" Opacity="0.65" />
+            </StackPanel>
+
+            <Button x:Name="ReSelectButton" Content="检测其他照片" Click="PickFiles_Click" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed" />
+        </Grid>
+
+        <!-- 主界面容器 -->
+        <Grid Grid.Row="1">
+            <!-- 拖拽/上传区 -->
+            <Border x:Name="DropZone" Background="{ThemeResource WorkspaceBackgroundBrush}" BorderBrush="{ThemeResource WorkspaceBorderBrush}" BorderThickness="1" CornerRadius="16" Padding="32" AllowDrop="True" DragOver="DropZone_DragOver" Drop="DropZone_Drop" Tapped="DropZone_Tapped">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+                    <Border Width="72" Height="72" Background="{ThemeResource WorkspaceIconBackgroundBrush}" CornerRadius="36" HorizontalAlignment="Center">
+                        <FontIcon Glyph="&#xE722;" FontFamily="Segoe MDL2 Assets" FontSize="34" Foreground="#0F6CBD" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Spacing="6" HorizontalAlignment="Center">
+                        <TextBlock Text="点击或拖动照片到这里" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="支持 RAW 原图 (ARW, NEF, CR2/CR3, RAF) 及 JPG 图像 (最大 100MB)" FontSize="13" Opacity="0.62" HorizontalAlignment="Center" />
+                        <TextBlock Text="完美兼容 索尼, 尼康, 佳能, 富士, 理光, 宾得, 奥林巴斯, 松下等机型" FontSize="12" Opacity="0.5" HorizontalAlignment="Center" Margin="0,4,0,0" />
+                    </StackPanel>
+
+                    <Button Content="选择照片文件" Click="PickFiles_Click" Style="{StaticResource PrimaryButtonStyle}" Padding="24,10" HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
+
+            <!-- 加载状态 -->
+            <StackPanel x:Name="LoadingZone" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16" Visibility="Collapsed">
+                <ProgressRing IsActive="True" Width="48" Height="48" />
+                <TextBlock Text="正在提取 EXIF 与 MakerNote 硬件快门数据..." FontSize="14" Opacity="0.75" />
+            </StackPanel>
+
+            <!-- 结果摘要卡片面板 -->
+            <ScrollViewer x:Name="ResultZone" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="20">
+                    <!-- 核心快门数与相机卡片 -->
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- 主卡片：快门数与寿命 -->
+                        <Border Background="{ThemeResource WorkspaceBackgroundBrush}" BorderBrush="{ThemeResource WorkspaceBorderBrush}" BorderThickness="1" CornerRadius="16" Padding="28">
+                            <StackPanel Spacing="18">
+                                <Grid>
+                                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                        <FontIcon Glyph="&#xE722;" FontFamily="Segoe MDL2 Assets" FontSize="20" Foreground="#0F6CBD" />
+                                        <TextBlock x:Name="CameraModelText" Text="Sony ILCE-7RM4" FontSize="20" FontWeight="SemiBold" />
+                                    </StackPanel>
+
+                                    <Border x:Name="BrandBadge" Background="#1A107C41" CornerRadius="10" Padding="10,4" HorizontalAlignment="Right">
+                                        <TextBlock x:Name="CameraMakeText" Text="SONY" Foreground="#107C41" FontSize="12" FontWeight="Bold" />
+                                    </Border>
+                                </Grid>
+
+                                <Border Height="1" Background="{ThemeResource DividerBrush}" Opacity="0.5" />
+
+                                <Grid>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="机械快门总次数" FontSize="13" Opacity="0.6" />
+                                        <TextBlock x:Name="ShutterCountText" Text="28,450" FontSize="42" FontWeight="Bold" Foreground="#0F6CBD" />
+                                    </StackPanel>
+
+                                    <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Spacing="4">
+                                        <TextBlock Text="机身序列号" FontSize="12" Opacity="0.5" HorizontalAlignment="Right" />
+                                        <TextBlock x:Name="SerialNumberText" Text="3028491" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <StackPanel Spacing="8">
+                                    <Grid>
+                                        <TextBlock Text="快门设计寿命预估占比" FontSize="12" Opacity="0.6" />
+                                        <TextBlock x:Name="LifeProgressText" Text="已用 18.9% (标称 150,000 次)" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <ProgressBar x:Name="LifeProgressBar" Value="18.9" Maximum="100" Height="8" CornerRadius="4" Foreground="#0F6CBD" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 副卡片：可信度与文件信息 -->
+                        <Border Grid.Column="1" Background="{ThemeResource WorkspaceBackgroundBrush}" BorderBrush="{ThemeResource WorkspaceBorderBrush}" BorderThickness="1" CornerRadius="16" Padding="24">
+                            <StackPanel Spacing="16">
+                                <TextBlock Text="检测置信度" FontSize="15" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <FontIcon Glyph="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="22" Foreground="#107C41" />
+                                    <StackPanel>
+                                        <TextBlock x:Name="ConfidenceText" Text="高置信度 (MakerNote 原厂数据)" FontSize="13" FontWeight="SemiBold" Foreground="#107C41" />
+                                        <TextBlock Text="机身硬件芯片原始数据" FontSize="11" Opacity="0.55" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Border Height="1" Background="{ThemeResource DividerBrush}" Opacity="0.5" />
+
+                                <StackPanel Spacing="6">
+                                    <Grid><TextBlock Text="文件名" FontSize="12" Opacity="0.6" /><TextBlock x:Name="FileNameText" Text="DSC08492.ARW" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Right" MaxWidth="150" TextTrimming="CharacterEllipsis" /></Grid>
+                                    <Grid><TextBlock Text="文件大小" FontSize="12" Opacity="0.6" /><TextBlock x:Name="FileSizeText" Text="42.8 MB" FontSize="12" HorizontalAlignment="Right" /></Grid>
+                                    <Grid><TextBlock Text="拍摄时间" FontSize="12" Opacity="0.6" /><TextBlock x:Name="DateText" Text="2026-05-18 14:32" FontSize="12" HorizontalAlignment="Right" /></Grid>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <!-- EXIF 详细拍摄参数表 -->
+                    <Border Background="{ThemeResource WorkspaceBackgroundBrush}" BorderBrush="{ThemeResource WorkspaceBorderBrush}" BorderThickness="1" CornerRadius="16" Padding="24">
+                        <StackPanel Spacing="16">
+                            <TextBlock Text="核心 EXIF 拍摄参数" FontSize="16" FontWeight="SemiBold" />
+
+                            <Grid ColumnSpacing="16" RowSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border Grid.Column="0" Background="{ThemeResource WorkspaceIconBackgroundBrush}" CornerRadius="10" Padding="16">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="光圈" FontSize="11" Opacity="0.55" />
+                                        <TextBlock x:Name="ApertureText" Text="f/2.8" FontSize="18" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="1" Background="{ThemeResource WorkspaceIconBackgroundBrush}" CornerRadius="10" Padding="16">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="快门速度" FontSize="11" Opacity="0.55" />
+                                        <TextBlock x:Name="ShutterSpeedText" Text="1/1000s" FontSize="18" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="2" Background="{ThemeResource WorkspaceIconBackgroundBrush}" CornerRadius="10" Padding="16">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="ISO 感光度" FontSize="11" Opacity="0.55" />
+                                        <TextBlock x:Name="IsoText" Text="100" FontSize="18" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="3" Background="{ThemeResource WorkspaceIconBackgroundBrush}" CornerRadius="10" Padding="16">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="焦距" FontSize="11" Opacity="0.55" />
+                                        <TextBlock x:Name="FocalLengthText" Text="50mm" FontSize="18" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <Grid Margin="0,8,0,0">
+                                <TextBlock Text="镜头型号" FontSize="13" Opacity="0.6" VerticalAlignment="Center" />
+                                <TextBlock x:Name="LensModelText" Text="FE 24-70mm F2.8 GM II" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Page>

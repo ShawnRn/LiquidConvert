@@ -6,20 +6,24 @@
     <Window.SystemBackdrop>
         <MicaBackdrop />
     </Window.SystemBackdrop>
-    <Grid x:Name="RootLayout" Background="{ThemeResource AppBackgroundBrush}" AllowDrop="True" DragOver="Root_DragOver" Drop="Root_Drop">
+
+    <Grid x:Name="RootLayout" Background="{ThemeResource AppBackgroundBrush}">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="272" />
+            <ColumnDefinition Width="260" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
+        <!-- 左侧侧边栏 -->
         <Border Background="{ThemeResource SidebarBackgroundBrush}" BorderBrush="{ThemeResource SidebarBorderBrush}" BorderThickness="0,0,1,0">
-            <Grid RowSpacing="16">
+            <Grid RowSpacing="12">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <StackPanel Margin="24,28,24,8" Spacing="4">
+
+                <!-- 顶部 Logo 区 -->
+                <StackPanel Margin="24,24,24,8" Spacing="4">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <Image Source="Assets/StoreLogo.png" Width="32" Height="32" />
                         <StackPanel VerticalAlignment="Center">
@@ -29,162 +33,111 @@
                     </StackPanel>
                 </StackPanel>
 
+                <!-- 导航菜单按钮区 -->
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" VerticalScrollMode="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Spacing="1" Padding="0,0,0,18">
-                    <TextBlock Text="工作区" Margin="40,10,0,9" FontSize="11" FontWeight="SemiBold" Opacity="0.52" />
-                    <Button x:Name="NavConvert" Tag="convert" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="13"><FontIcon Glyph="&#xE8AB;" FontFamily="Segoe MDL2 Assets" FontSize="17" /><TextBlock Text="图片转换" FontSize="14" /></StackPanel>
-                    </Button>
-                    <Button x:Name="NavCompress" Tag="compress" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="13"><FontIcon Glyph="&#xE91B;" FontFamily="Segoe MDL2 Assets" FontSize="17" /><TextBlock Text="图片压缩" FontSize="14" /></StackPanel>
-                    </Button>
-                    <Button x:Name="NavStitch" Tag="stitch" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="13"><FontIcon Glyph="&#xE8B9;" FontFamily="Segoe MDL2 Assets" FontSize="17" /><TextBlock Text="图片拼接" FontSize="14" /></StackPanel>
-                    </Button>
-                    <Button x:Name="NavRound" Tag="round" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="13"><FontIcon Glyph="&#xE91B;" FontFamily="Segoe MDL2 Assets" FontSize="17" /><TextBlock Text="图片圆角" FontSize="14" /></StackPanel>
-                    </Button>
-                    <Button x:Name="NavAudio" Tag="audio" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="13"><FontIcon Glyph="&#xE8D6;" FontFamily="Segoe MDL2 Assets" FontSize="17" /><TextBlock Text="音频提取" FontSize="14" /></StackPanel>
-                    </Button>
-                    <Button x:Name="NavVideo" Tag="video" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="13"><FontIcon Glyph="&#xE714;" FontFamily="Segoe MDL2 Assets" FontSize="17" /><TextBlock Text="视频 GIF" FontSize="14" /></StackPanel>
-                    </Button>
-                    <Button x:Name="NavIcon" Tag="icon" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="13"><FontIcon Glyph="&#xE8A7;" FontFamily="Segoe MDL2 Assets" FontSize="17" /><TextBlock Text="图标转换" FontSize="14" /></StackPanel>
-                    </Button>
-                    <Button x:Name="NavDocument" Tag="document" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="13"><FontIcon Glyph="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="17" /><TextBlock Text="AI 文档提取" FontSize="14" /></StackPanel>
-                    </Button>
-                    <Button x:Name="NavShutter" Tag="shutter" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="13"><FontIcon Glyph="&#xE722;" FontFamily="Segoe MDL2 Assets" FontSize="17" /><TextBlock Text="快门检测" FontSize="14" /></StackPanel>
-                    </Button>
-                    <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="24,16" />
-                    <TextBlock Text="文档" Margin="40,6,0,9" FontSize="11" FontWeight="SemiBold" Opacity="0.52" />
-                    <Button x:Name="NavLark" Tag="lark" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="13"><FontIcon Glyph="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="17" /><TextBlock Text="Lark2Pad" FontSize="14" /></StackPanel>
-                    </Button>
-                </StackPanel>
+                    <StackPanel Spacing="2" Padding="12,0,12,18">
+                        <Button x:Name="NavHome" Tag="home" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon Glyph="&#xE80F;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                                <TextBlock Text="主页" FontSize="13" />
+                            </StackPanel>
+                        </Button>
+
+                        <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="12,8" />
+                        <TextBlock Text="媒体与图像" Margin="16,4,0,6" FontSize="11" FontWeight="SemiBold" Opacity="0.45" />
+
+                        <Button x:Name="NavConvert" Tag="convert" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon Glyph="&#xE8AB;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                                <TextBlock Text="图片转换" FontSize="13" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="NavCompress" Tag="compress" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon Glyph="&#xE91B;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                                <TextBlock Text="图片压缩" FontSize="13" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="NavStitch" Tag="stitch" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon Glyph="&#xE8B9;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                                <TextBlock Text="图片拼接" FontSize="13" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="NavVideo" Tag="video" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon Glyph="&#xE714;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                                <TextBlock Text="视频 GIF" FontSize="13" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="NavAudio" Tag="audio" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon Glyph="&#xE8D6;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                                <TextBlock Text="音频转换" FontSize="13" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="NavIcon" Tag="icon" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon Glyph="&#xE8A7;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                                <TextBlock Text="图标转换" FontSize="13" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="NavShutter" Tag="shutter" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon Glyph="&#xE722;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                                <TextBlock Text="快门检测" FontSize="13" />
+                            </StackPanel>
+                        </Button>
+
+                        <Border Height="1" Background="{ThemeResource DividerBrush}" Margin="12,8" />
+                        <TextBlock Text="AI 与文档" Margin="16,4,0,6" FontSize="11" FontWeight="SemiBold" Opacity="0.45" />
+
+                        <Button x:Name="NavDocument" Tag="document" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon Glyph="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                                <TextBlock Text="AI 文档提取" FontSize="13" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="NavLark" Tag="lark" Click="ModeButton_Click" Style="{StaticResource NavButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <FontIcon Glyph="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+                                <TextBlock Text="Lark2Pad" FontSize="13" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
                 </ScrollViewer>
-                <Border Grid.Row="2" BorderBrush="{ThemeResource SidebarBorderBrush}" BorderThickness="0,1,0,0" Padding="20,16">
+
+                <!-- 底部用户与设置区 -->
+                <Border Grid.Row="2" BorderBrush="{ThemeResource SidebarBorderBrush}" BorderThickness="0,1,0,0" Padding="16,14">
                     <Grid>
-                        <StackPanel Orientation="Horizontal" Spacing="10">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                             <Border Width="32" Height="32" Background="{ThemeResource AvatarBackgroundBrush}" CornerRadius="16">
-                                <FontIcon Glyph="&#xE77B;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#0F6CBD" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <FontIcon Glyph="&#xE77B;" FontFamily="Segoe MDL2 Assets" FontSize="15" Foreground="#0F6CBD" HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                             <StackPanel VerticalAlignment="Center" Spacing="1">
-                                <TextBlock x:Name="UserNameText" Text="UserName" FontSize="13" FontWeight="SemiBold" />
-                                <TextBlock Text="本地工作区" FontSize="11" Opacity="0.55" />
+                                <TextBlock x:Name="UserNameText" Text="UserName" FontSize="12" FontWeight="SemiBold" />
+                                <TextBlock Text="本地工作区" FontSize="10" Opacity="0.55" />
                             </StackPanel>
                         </StackPanel>
-                        <Button HorizontalAlignment="Right" VerticalAlignment="Center" Click="Settings_Click" Padding="8" ToolTipService.ToolTip="设置">
-                            <FontIcon Glyph="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="16" />
+
+                        <Button x:Name="SettingsNavButton" Tag="settings" Click="ModeButton_Click" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="8,6" CornerRadius="6" ToolTipService.ToolTip="设置">
+                            <FontIcon Glyph="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="15" />
                         </Button>
                     </Grid>
                 </Border>
             </Grid>
         </Border>
 
-        <Grid x:Name="ContentSurface" Grid.Column="1" Padding="52,42" MaxWidth="1400" HorizontalAlignment="Stretch" Opacity="1">
-            <Grid.RenderTransform>
-                <TranslateTransform x:Name="ContentTranslate" />
-            </Grid.RenderTransform>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-            <Grid>
-                <StackPanel Spacing="8">
-                    <TextBlock x:Name="PageEyebrow" Text="IMAGE TOOLS" FontSize="12" FontWeight="SemiBold" Foreground="#0F6CBD" CharacterSpacing="80" />
-                    <TextBlock x:Name="PageTitle" Text="图片转换" FontSize="32" FontWeight="SemiBold" />
-                    <TextBlock x:Name="PageDescription" Text="快速将图片转换为常用格式，所有文件均在本机处理。" FontSize="15" Opacity="0.64" />
-                </StackPanel>
-                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Padding="10,6" Background="{ThemeResource StatusPillBackgroundBrush}" CornerRadius="20">
-                    <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE770;" FontFamily="Segoe Fluent Icons" Foreground="#0F6CBD" /><TextBlock Text="本地处理" Foreground="#0F6CBD" FontSize="12" /></StackPanel>
-                </Border>
-            </Grid>
-
-            <Border x:Name="GenericWorkspace" Grid.Row="1" Margin="0,32,0,20" Padding="32" Background="{ThemeResource WorkspaceBackgroundBrush}" BorderBrush="{ThemeResource WorkspaceBorderBrush}" BorderThickness="1" CornerRadius="14">
-                <Grid VerticalAlignment="Center" RowSpacing="20">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                    <Border Width="68" Height="68" Background="{ThemeResource WorkspaceIconBackgroundBrush}" CornerRadius="18" HorizontalAlignment="Center">
-                        <FontIcon x:Name="WorkspaceIcon" Glyph="&#xE91B;" FontFamily="Segoe Fluent Icons" FontSize="30" Foreground="#0F6CBD" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
-                    <StackPanel Grid.Row="1" Spacing="7" HorizontalAlignment="Center">
-                        <TextBlock x:Name="WorkspaceTitle" Text="选择需要转换的图片" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                        <TextBlock x:Name="WorkspaceHint" Text="支持拖入文件，或从本地选择 PNG、JPEG、WebP、HEIC 等格式。" MaxWidth="500" TextAlignment="Center" TextWrapping="Wrap" Opacity="0.62" />
-                    </StackPanel>
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12">
-                        <Button x:Name="PickButton" Content="选择文件" Click="PickFiles_Click" Style="{StaticResource PrimaryButtonStyle}" />
-                        <Button x:Name="RunButton" Content="转换为 PNG" Click="Run_Click" Padding="18,11" CornerRadius="8" />
-                    </StackPanel>
-                    <StackPanel x:Name="RoundCornerOptions" Grid.Row="3" Visibility="Collapsed" Width="300" HorizontalAlignment="Center" Margin="0,2,0,0" Spacing="6">
-                        <Grid><TextBlock Text="圆角半径" /><TextBlock x:Name="CornerRadiusText" Text="32 px" HorizontalAlignment="Right" Foreground="#0F6CBD" /></Grid>
-                        <Slider x:Name="CornerRadiusSlider" Minimum="0" Maximum="200" Value="32" ValueChanged="CornerRadiusSlider_ValueChanged" />
-                        <TextBlock Text="导出透明背景 PNG，保留图片原始尺寸。" FontSize="12" Opacity="0.58" />
-                    </StackPanel>
-                </Grid>
-            </Border>
-            <Border x:Name="LarkWorkspace" Grid.Row="1" Margin="0,32,0,20" Padding="32" Background="{ThemeResource WorkspaceBackgroundBrush}" BorderBrush="{ThemeResource WorkspaceBorderBrush}" BorderThickness="1" CornerRadius="14" Visibility="Collapsed">
-                <Grid RowSpacing="18">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                    <Grid>
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="飞书文档 → Etherpad" FontSize="20" FontWeight="SemiBold" />
-                            <TextBlock x:Name="LarkStatus" Text="点击下方区域读取剪贴板，或将 Markdown 文件拖入。" Opacity="0.62" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center">
-                            <Ellipse x:Name="LarkLoginIndicator" Width="8" Height="8" Fill="#94A3B8" VerticalAlignment="Center" />
-                            <TextBlock x:Name="LarkLoginStatus" Text="未登录" FontSize="12" Opacity="0.68" VerticalAlignment="Center" />
-                            <Button x:Name="LarkLoginButton" Content="登录 Etherpad" Click="LarkLogin_Click" Padding="14,8" />
-                        </StackPanel>
-                    </Grid>
-                    <Border x:Name="LarkDropTarget" Grid.Row="1" Background="{ThemeResource DropTargetBackgroundBrush}" CornerRadius="10" Padding="22" Margin="0,12" AllowDrop="True" DragOver="LarkDropTarget_DragOver" Drop="LarkDropTarget_Drop" Tapped="LarkDropTarget_Tapped" ToolTipService.ToolTip="点击读取剪贴板，或拖入 Markdown 文件">
-                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
-                            <FontIcon Glyph="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="32" Foreground="#0F6CBD" HorizontalAlignment="Center" />
-                            <TextBlock Text="点击读取剪贴板，或拖入 Markdown 文件" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                            <TextBlock Text="支持飞书富文本剪贴板，以及 .md、.markdown、.txt 文件。" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="440" Opacity="0.62" />
-                        </StackPanel>
-                    </Border>
-                    <Border x:Name="LarkPreviewPanel" Grid.Row="1" Visibility="Collapsed" Background="{ThemeResource DropTargetBackgroundBrush}" CornerRadius="10" Padding="18" Margin="0,12">
-                        <Grid RowSpacing="10">
-                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                            <Grid>
-                                <StackPanel Spacing="3"><TextBlock Text="转换预览" FontWeight="SemiBold" /><TextBlock x:Name="LarkPreviewSource" Opacity="0.62" FontSize="12" /></StackPanel>
-                                <Button Content="重新导入" Click="LarkReset_Click" HorizontalAlignment="Right" Padding="14,7" />
-                            </Grid>
-                            <Grid Grid.Row="1">
-                                <WebView2 x:Name="LarkPreview" MinHeight="280" Opacity="0" NavigationCompleted="LarkPreview_NavigationCompleted" />
-                                <Border x:Name="LarkPreviewLoading" Background="{ThemeResource DropTargetBackgroundBrush}">
-                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-                                        <ProgressRing IsActive="True" Width="28" Height="28" HorizontalAlignment="Center" />
-                                        <TextBlock x:Name="LarkLoadingText" Text="正在准备预览…" Opacity="0.72" />
-                                    </StackPanel>
-                                </Border>
-                            </Grid>
-                        </Grid>
-                    </Border>
-                    <StackPanel x:Name="LarkActions" Grid.Row="2" Spacing="12" Visibility="Collapsed">
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10">
-                            <Button Content="重新读取剪贴板" Click="LarkPaste_Click" Padding="16,10" />
-                            <Button Content="导入其他 Markdown" Click="LarkImport_Click" Padding="16,10" />
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10">
-                            <Button Content="复制 Markdown" Click="LarkCopyMarkdown_Click" Padding="16,10" />
-                            <Button Content="复制 Etherpad" Click="LarkCopyEtherpad_Click" Padding="16,10" />
-                            <Button Content="保存 HTML" Click="LarkExport_Click" Padding="16,10" />
-                            <Button Content="复制到公众号" Click="LarkCopyWeChat_Click" Padding="16,10" />
-                            <Button Content="同步到 Pad" Click="LarkSync_Click" Style="{StaticResource PrimaryButtonStyle}" />
-                        </StackPanel>
-                    </StackPanel>
-                </Grid>
-            </Border>
-
-            <StackPanel Grid.Row="2" Spacing="10">
-                <ListView x:Name="FileList" MaxHeight="155" SelectionMode="None" Visibility="Collapsed" />
-                <InfoBar x:Name="StatusBar" IsOpen="False" IsClosable="True" />
-            </StackPanel>
+        <!-- 右侧 Frame 视图加载容器 -->
+        <Grid Grid.Column="1" Padding="32,24">
+            <Frame x:Name="ContentFrame" Navigated="ContentFrame_Navigated" />
         </Grid>
     </Grid>
 </Window>

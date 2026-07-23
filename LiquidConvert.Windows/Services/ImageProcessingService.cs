@@ -10,7 +10,42 @@ namespace LiquidConvert.Windows.Services;
 /// <summary>Local-only image pipeline built on the Windows Imaging Component APIs.</summary>
 public sealed class ImageProcessingService
 {
+    public static readonly ImageProcessingService Instance = new();
     public static readonly string[] SupportedExtensions = [".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif"];
+
+    public async Task CompressImageAsync(StorageFile input, StorageFile output, double quality, int resizeMode, double scaleFactor, int targetWidth)
+    {
+        double scale = 1.0;
+        if (resizeMode == 1) // Scale percentage
+        {
+            scale = Math.Clamp(scaleFactor, 0.05, 1.0);
+        }
+        else if (resizeMode == 2 && targetWidth > 0) // Fixed target width
+        {
+            var (w, _) = await GetDimensionsAsync(input);
+            if (w > 0) scale = Math.Clamp((double)targetWidth / w, 0.05, 2.0);
+        }
+
+        using var bitmap = await LoadBitmapAsync(input, scale);
+        string ext = Path.GetExtension(output.Name).ToLowerInvariant();
+
+        if (ext is ".jpg" or ".jpeg")
+        {
+            using var stream = await output.OpenAsync(FileAccessMode.ReadWrite);
+            await EncodeJpegAsync(bitmap, stream, quality);
+        }
+        else
+        {
+            Guid encoderId = ext switch
+            {
+                ".png" => BitmapEncoder.PngEncoderId,
+                ".bmp" => BitmapEncoder.BmpEncoderId,
+                ".tiff" => BitmapEncoder.TiffEncoderId,
+                _ => BitmapEncoder.PngEncoderId
+            };
+            await SaveAsync(bitmap, output, encoderId);
+        }
+    }
 
     public async Task ConvertToPngAsync(StorageFile input, StorageFolder outputFolder)
     {

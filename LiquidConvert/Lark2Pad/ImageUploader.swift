@@ -10,6 +10,7 @@ final class ImageUploader {
     /// 静态内存缓存，用于避免在转换出错重试时重复下载和上传相同的图片
     private static let cacheLock = NSLock()
     private static var uploadedCache: [String: String] = [:]
+    private static var dataURICache: [String: String] = [:]
     
     private static func getCachedURL(for url: String) -> String? {
         cacheLock.lock()
@@ -21,6 +22,91 @@ final class ImageUploader {
         cacheLock.lock()
         defer { cacheLock.unlock() }
         uploadedCache[url] = uploadedURL
+    }
+
+    private static func getCachedDataURI(for url: String) -> String? {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return dataURICache[url]
+    }
+
+    private static func setCachedDataURI(_ dataURI: String, for urls: String...) {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        for u in urls {
+            if !u.isEmpty {
+                dataURICache[u] = dataURI
+            }
+        }
+    }
+
+    /// 将 HTML 中的图床 URL 替换为存储在内存缓存中的 Base64 Data URI（仅供复制到公众号使用，不影响 Pad 发送）
+    static func convertImageURLsToBase64DataURIs(in html: String) -> String {
+        cacheLock.lock()
+        let mapping = dataURICache
+        cacheLock.unlock()
+        
+        var result = html
+        for (url, dataURI) in mapping {
+            if !url.isEmpty && !dataURI.isEmpty {
+                result = result.replacingOccurrences(of: url, with: dataURI)
+            }
+        }
+        return result
+    }
+    
+    /// 强支持 100% 写入剪贴板：异步确保 HTML 中所有非 data: 的 <img> src 均在第一时间补齐并转为 Base64 Data URI
+    nonisolated static func convertImageURLsToBase64DataURIsAsync(in html: String) async -> String {
+        var result = await MainActor.run { convertImageURLsToBase64DataURIs(in: html) }
+        
+        let pattern = #"<img\b[^>]*?\bsrc=["'](https?://[^"']+)["']"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return result
+        }
+        
+        let nsString = result as NSString
+        let matches = regex.matches(in: result, options: [], range: NSRange(location: 0, length: nsString.length))
+        
+        var urlsToFetch: Set<String> = []
+        for match in matches {
+            if match.numberOfRanges > 1 {
+                let urlStr = nsString.substring(with: match.range(at: 1))
+                let cached = await MainActor.run { getCachedDataURI(for: urlStr) }
+                if cached == nil {
+                    urlsToFetch.insert(urlStr)
+                }
+            }
+        }
+        
+        if urlsToFetch.isEmpty {
+            return result
+        }
+        
+        await withTaskGroup(of: (String, String?).self) { group in
+            for urlStr in urlsToFetch {
+                group.addTask {
+                    guard let url = URL(string: urlStr),
+                          let (data, response) = try? await session.data(from: url),
+                          (response as? HTTPURLResponse)?.statusCode == 200 else {
+                        return (urlStr, nil)
+                    }
+                    let mime = response.mimeType ?? "image/png"
+                    let validMime = mime.contains("image") ? mime : "image/png"
+                    let base64 = data.base64EncodedString()
+                    let dataURI = "data:\(validMime);base64,\(base64)"
+                    return (urlStr, dataURI)
+                }
+            }
+            
+            for await (urlStr, dataURI) in group {
+                if let dataURI {
+                    await MainActor.run { setCachedDataURI(dataURI, for: urlStr) }
+                    result = result.replacingOccurrences(of: urlStr, with: dataURI)
+                }
+            }
+        }
+        
+        return result
     }
     
     private struct DownloadResult: Sendable {
@@ -208,7 +294,9 @@ final class ImageUploader {
                 mimeType: payload.mimeType,
                 onProgress: onProgress
             )
+            let dataURI = "data:\(payload.mimeType);base64,\(payload.data.base64EncodedString())"
             setCachedURL(uploadedURL, for: url)
+            setCachedDataURI(dataURI, for: url, uploadedURL)
             return uploadedURL
         } catch {
             print("[ImageUploader] ❌ 图片下载/处理阶段失败: \(url), 错误: \(error.localizedDescription)")

@@ -1,0 +1,154 @@
+<Page
+    x:Class="LiquidConvert.Windows.Views.ImageCompressPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid RowSpacing="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶栏 Header -->
+        <Grid>
+            <StackPanel Spacing="6">
+                <TextBlock Text="图片压缩与缩放" FontSize="24" FontWeight="SemiBold" />
+                <TextBlock Text="支持 JPEG、PNG、WebP 等格式智能压缩，降低存储占用，保持画质。" FontSize="14" Opacity="0.65" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Button Content="添加图片" Click="AddFiles_Click" Padding="16,8" />
+                <Button Content="清空列表" Click="ClearFiles_Click" Padding="16,8" />
+            </StackPanel>
+        </Grid>
+
+        <!-- 中部左右分栏：左侧设置面板，右侧文件表格/拖拽区 -->
+        <Grid Grid.Row="1" ColumnSpacing="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="320" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左侧压缩与调节参数卡片 -->
+            <Border Background="{ThemeResource WorkspaceBackgroundBrush}" BorderBrush="{ThemeResource WorkspaceBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="20">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="20">
+                        <TextBlock Text="压缩参数设置" FontSize="16" FontWeight="SemiBold" />
+
+                        <!-- 目标格式 -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="输出格式" FontSize="13" Opacity="0.7" />
+                            <ComboBox x:Name="FormatCombo" HorizontalAlignment="Stretch" SelectedIndex="0">
+                                <ComboBoxItem Content="保持原格式" />
+                                <ComboBoxItem Content="JPEG (*.jpg)" />
+                                <ComboBoxItem Content="PNG (*.png)" />
+                                <ComboBoxItem Content="WebP (*.webp)" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <!-- 压缩质量 -->
+                        <StackPanel Spacing="8">
+                            <Grid>
+                                <TextBlock Text="压缩质量" FontSize="13" Opacity="0.7" />
+                                <TextBlock x:Name="QualityValueText" Text="80%" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Right" Foreground="#0F6CBD" />
+                            </Grid>
+                            <Slider x:Name="QualitySlider" Minimum="10" Maximum="100" Value="80" ValueChanged="QualitySlider_ValueChanged" />
+                        </StackPanel>
+
+                        <Border Height="1" Background="{ThemeResource DividerBrush}" Opacity="0.5" />
+
+                        <!-- 尺寸缩放模式 -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="尺寸调整" FontSize="13" Opacity="0.7" />
+                            <ComboBox x:Name="ResizeModeCombo" HorizontalAlignment="Stretch" SelectedIndex="0" SelectionChanged="ResizeModeCombo_SelectionChanged">
+                                <ComboBoxItem Content="保持原始尺寸" />
+                                <ComboBoxItem Content="按比例缩放" />
+                                <ComboBoxItem Content="指定固定宽度" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <!-- 缩放比例/宽度控制 -->
+                        <StackPanel x:Name="ScaleOptionPanel" Spacing="8" Visibility="Collapsed">
+                            <Grid>
+                                <TextBlock Text="缩放比例" FontSize="13" Opacity="0.7" />
+                                <TextBlock x:Name="ScaleValueText" Text="75%" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Right" Foreground="#0F6CBD" />
+                            </Grid>
+                            <Slider x:Name="ScaleSlider" Minimum="10" Maximum="100" Value="75" ValueChanged="ScaleSlider_ValueChanged" />
+                        </StackPanel>
+
+                        <StackPanel x:Name="WidthOptionPanel" Spacing="8" Visibility="Collapsed">
+                            <TextBlock Text="目标宽度 (px)" FontSize="13" Opacity="0.7" />
+                            <NumberBox x:Name="TargetWidthBox" Value="1080" Minimum="50" Maximum="10000" SpinButtonPlacementMode="Inline" HorizontalAlignment="Stretch" />
+                        </StackPanel>
+
+                        <Border Height="1" Background="{ThemeResource DividerBrush}" Opacity="0.5" />
+
+                        <CheckBox x:Name="KeepExifCheckBox" Content="保留 EXIF 元数据" IsChecked="True" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- 右侧文件列表区 -->
+            <Border Grid.Column="1" Background="{ThemeResource WorkspaceBackgroundBrush}" BorderBrush="{ThemeResource WorkspaceBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="2" AllowDrop="True" DragOver="FileList_DragOver" Drop="FileList_Drop">
+                <Grid>
+                    <!-- 空状态 / 拖拽区域 -->
+                    <StackPanel x:Name="EmptyState" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+                        <Border Width="64" Height="64" Background="{ThemeResource WorkspaceIconBackgroundBrush}" CornerRadius="32" HorizontalAlignment="Center">
+                            <FontIcon Glyph="&#xE91B;" FontFamily="Segoe MDL2 Assets" FontSize="28" Foreground="#0F6CBD" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel Spacing="6" HorizontalAlignment="Center">
+                            <TextBlock Text="拖拽图片到这里，或点击添加图片" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                            <TextBlock Text="支持批量导入 PNG, JPEG, BMP, WebP 格式。" FontSize="13" Opacity="0.6" HorizontalAlignment="Center" />
+                        </StackPanel>
+                        <Button Content="选择图片文件" Click="AddFiles_Click" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- 文件 ListView -->
+                    <ListView x:Name="FileListView" Visibility="Collapsed" SelectionMode="None" Padding="12">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="12,8" ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="100" />
+                                        <ColumnDefinition Width="100" />
+                                        <ColumnDefinition Width="100" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Path}" FontSize="11" Opacity="0.5" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="原大小" FontSize="11" Opacity="0.5" />
+                                        <TextBlock Text="{Binding OriginalSizeStr}" FontSize="13" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                        <TextBlock Text="压缩后" FontSize="11" Opacity="0.5" />
+                                        <TextBlock Text="{Binding CompressedSizeStr}" FontSize="13" Foreground="#107C41" FontWeight="SemiBold" />
+                                    </StackPanel>
+
+                                    <TextBlock Grid.Column="3" Text="{Binding StatusStr}" VerticalAlignment="Center" FontSize="12" Opacity="0.8" HorizontalAlignment="Right" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 底部底部批量导出与状态栏 -->
+        <Border Grid.Row="2" Background="{ThemeResource WorkspaceBackgroundBrush}" BorderBrush="{ThemeResource WorkspaceBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+            <Grid>
+                <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                    <TextBlock x:Name="StatusSummaryText" Text="列表为空，等待添加文件..." VerticalAlignment="Center" Opacity="0.7" />
+                </StackPanel>
+
+                <Button x:Name="StartCompressButton" Content="开始批量压缩" Click="StartCompress_Click" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Right" Padding="28,10" IsEnabled="False" />
+            </Grid>
+        </Border>
+    </Grid>
+</Page>

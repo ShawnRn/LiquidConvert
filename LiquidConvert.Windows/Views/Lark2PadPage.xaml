@@ -1,0 +1,99 @@
+<Page
+    x:Class="LiquidConvert.Windows.Views.Lark2PadPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶栏 Header -->
+        <Grid>
+            <StackPanel Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="飞书文档 → Etherpad" FontSize="24" FontWeight="SemiBold" />
+                    <Border Background="#100F6CBD" CornerRadius="12" Padding="10,3">
+                        <TextBlock Text="Lark2Pad Pro" Foreground="#0F6CBD" FontSize="11" FontWeight="Bold" />
+                    </Border>
+                </StackPanel>
+                <TextBlock x:Name="LarkStatus" Text="点击下方区域读取剪贴板，或将 Markdown 文件拖入。" FontSize="14" Opacity="0.65" />
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Ellipse x:Name="LarkLoginIndicator" Width="8" Height="8" Fill="#94A3B8" VerticalAlignment="Center" />
+                <TextBlock x:Name="LarkLoginStatus" Text="未登录" FontSize="12" Opacity="0.68" VerticalAlignment="Center" />
+                <Button x:Name="LarkLoginButton" Content="登录 Etherpad" Click="LarkLogin_Click" Padding="14,6" />
+            </StackPanel>
+        </Grid>
+
+        <!-- 中部导入与 WebView2 预览面板 -->
+        <Grid Grid.Row="1">
+            <!-- 拖拽/导入按钮面板 -->
+            <Border x:Name="LarkDropTarget" Background="{ThemeResource WorkspaceBackgroundBrush}" BorderBrush="{ThemeResource WorkspaceBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="28" AllowDrop="True" DragOver="LarkDropTarget_DragOver" Drop="LarkDropTarget_Drop" Tapped="LarkDropTarget_Tapped" ToolTipService.ToolTip="点击读取剪贴板，或拖入 Markdown 文件">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+                    <Border Width="64" Height="64" Background="{ThemeResource WorkspaceIconBackgroundBrush}" CornerRadius="32" HorizontalAlignment="Center">
+                        <FontIcon Glyph="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="30" Foreground="#0F6CBD" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Spacing="6" HorizontalAlignment="Center">
+                        <TextBlock Text="点击读取剪贴板，或拖入 Markdown 文件" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="支持飞书富文本剪贴板，以及 .md、.markdown、.txt 文件。" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460" Opacity="0.62" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
+                        <Button Content="读取剪贴板" Click="LarkPaste_Click" Style="{StaticResource PrimaryButtonStyle}" Padding="20,9" />
+                        <Button Content="导入 Markdown 文件" Click="LarkImport_Click" Padding="20,9" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- WebView2 预览区 -->
+            <Border x:Name="LarkPreviewPanel" Visibility="Collapsed" Background="{ThemeResource WorkspaceBackgroundBrush}" BorderBrush="{ThemeResource WorkspaceBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="16">
+                <Grid RowSpacing="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="文档转换渲染预览" FontWeight="SemiBold" FontSize="15" />
+                            <TextBlock x:Name="LarkPreviewSource" Opacity="0.6" FontSize="12" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                            <Button Content="重新导入" Click="LarkReset_Click" Padding="14,6" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Grid.Row="1">
+                        <WebView2 x:Name="LarkPreview" MinHeight="280" Opacity="0" NavigationCompleted="LarkPreview_NavigationCompleted" />
+                        <Border x:Name="LarkPreviewLoading" Background="{ThemeResource WorkspaceBackgroundBrush}">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+                                <ProgressRing IsActive="True" Width="28" Height="28" HorizontalAlignment="Center" />
+                                <TextBlock x:Name="LarkLoadingText" Text="正在准备富文本预览…" Opacity="0.72" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 底部底部多向操作按钮栏 -->
+        <Border Grid.Row="2" Background="{ThemeResource WorkspaceBackgroundBrush}" BorderBrush="{ThemeResource WorkspaceBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="16">
+            <Grid>
+                <StackPanel x:Name="LarkActions" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Visibility="Collapsed">
+                    <Button Content="复制 Markdown" Click="LarkCopyMarkdown_Click" Padding="14,8" />
+                    <Button Content="复制 Etherpad" Click="LarkCopyEtherpad_Click" Padding="14,8" />
+                    <Button Content="保存 HTML" Click="LarkExport_Click" Padding="14,8" />
+                    <Button Content="复制到公众号" Click="LarkCopyWeChat_Click" Padding="14,8" />
+                    <Button Content="同步到 Pad" Click="LarkSync_Click" Style="{StaticResource PrimaryButtonStyle}" Padding="20,8" />
+                </StackPanel>
+
+                <TextBlock x:Name="FooterInfoText" Text="导入文档后可解锁微信公众号排版与 Pad 云端同步能力。" VerticalAlignment="Center" Opacity="0.65" />
+            </Grid>
+        </Border>
+    </Grid>
+</Page>

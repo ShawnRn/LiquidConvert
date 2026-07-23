@@ -7,6 +7,13 @@ public static class SettingsStore
 {
     private const string ThemeKey = "settings.theme";
     private const string OutputFolderKey = "settings.output-folder";
+    private const string UserNameKey = "settings.user-name";
+    private const string CustomAvatarKey = "settings.custom-avatar";
+    private const string LarkServerKey = "settings.lark-server";
+    private const string EtherpadTokenKey = "settings.etherpad-token";
+    private const string PadIdKey = "settings.pad-id";
+    private const string CmsEndpointKey = "settings.cms-endpoint";
+    private const string AutoFormatKey = "settings.auto-format";
     private static readonly object Gate = new();
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -22,6 +29,48 @@ public static class SettingsStore
     {
         get => Get(OutputFolderKey);
         set => Set(OutputFolderKey, value);
+    }
+
+    public static string UserName
+    {
+        get => Get(UserNameKey) ?? "UserName";
+        set => Set(UserNameKey, value);
+    }
+
+    public static string? CustomAvatar
+    {
+        get => Get(CustomAvatarKey);
+        set => Set(CustomAvatarKey, value);
+    }
+
+    public static string LarkServer
+    {
+        get => Get(LarkServerKey) ?? "https://pad.0x001.net";
+        set => Set(LarkServerKey, value);
+    }
+
+    public static string EtherpadToken
+    {
+        get => Get(EtherpadTokenKey) ?? "";
+        set => Set(EtherpadTokenKey, value);
+    }
+
+    public static string PadId
+    {
+        get => Get(PadIdKey) ?? "";
+        set => Set(PadIdKey, value);
+    }
+
+    public static string CmsEndpoint
+    {
+        get => Get(CmsEndpointKey) ?? "";
+        set => Set(CmsEndpointKey, value);
+    }
+
+    public static bool AutoFormat
+    {
+        get => Get(AutoFormatKey) != "false";
+        set => Set(AutoFormatKey, value ? "true" : "false");
     }
 
     public static string? Get(string key)

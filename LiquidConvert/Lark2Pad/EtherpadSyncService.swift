@@ -158,6 +158,54 @@ enum EtherpadSyncService {
         return encoded
     }
 
+    struct CMSChannel: Identifiable, Hashable, Sendable {
+        let id: String
+        let name: String
+    }
+
+    static let availableCMSChannels: [CMSChannel] = [
+        CMSChannel(id: "ifanr-morning-paper", name: "ifanr 早报"),
+        CMSChannel(id: "ifanr", name: "ifanr 推文"),
+        CMSChannel(id: "appso-morning-paper", name: "APPSO 早报"),
+        CMSChannel(id: "appso", name: "APPSO 推文"),
+        CMSChannel(id: "intelligentcar-morning-paper", name: "董车会早报"),
+        CMSChannel(id: "intelligentcar", name: "董车会推文"),
+        CMSChannel(id: "minapp", name: "知晓云"),
+        CMSChannel(id: "wordpress", name: "WordPress")
+    ]
+
+    static func sendToCMS(padID: String, channel: String) async throws -> String {
+        let cookies = CookieManager.shared.cookieHeaderValue
+        guard CookieManager.shared.hasValidSession, !cookies.isEmpty else {
+            throw SyncError.missingSession
+        }
+
+        let encodedPadID = try encodedPathComponent(padID)
+        let encodedChannel = try encodedPathComponent(channel)
+        guard let cmsURL = URL(string: "\(SecureRuntimeConfig.etherpadBaseURL)/p/\(encodedPadID)/send2cms/\(encodedChannel)"),
+              let padURL = URL(string: "\(SecureRuntimeConfig.etherpadBaseURL)/p/\(encodedPadID)") else {
+            throw SyncError.invalidURL
+        }
+
+        var request = URLRequest(url: cmsURL)
+        request.httpMethod = "POST"
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        request.setValue(SecureRuntimeConfig.etherpadBaseURL, forHTTPHeaderField: "Origin")
+        request.setValue(padURL.absoluteString, forHTTPHeaderField: "Referer")
+        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        request.setValue(cookies, forHTTPHeaderField: "Cookie")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let responseText = String(data: data, encoding: .utf8) ?? ""
+
+        guard statusCode == 200 || statusCode == 201 else {
+            throw SyncError.serverRejected(statusCode: statusCode, message: responseText)
+        }
+
+        return responseText
+    }
+
     private static func multipartBody(html: String, filename: String, boundary: String) -> Data {
         var body = Data()
         body.append("--\(boundary)\r\n".data(using: .utf8)!)

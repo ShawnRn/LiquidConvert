@@ -128,13 +128,11 @@ public sealed partial class Lark2PadService
 
     public void CopyEtherpadHtml(string markdown) => CopyHtml(BuildEtherpadHtml(markdown));
 
-    public void CopyWeChatHtml(string markdown) => CopyHtml(BuildRenderedHtml(markdown));
-
-    public void CopyHtml(string html)
+    public void CopyWeChatHtml(string markdown)
     {
         var package = new DataPackage();
-        package.SetHtmlFormat(html);
-        package.SetText(html);
+        package.SetHtmlFormat(BuildWeChatHtml(markdown));
+        package.SetText(markdown);
         Clipboard.SetContent(package);
     }
 
@@ -188,11 +186,53 @@ public sealed partial class Lark2PadService
 
     public static string BuildEtherpadHtml(string markdown)
     {
-        var body = string.Join("<br>\n", NormalizeMarkdown(markdown).Split('\n').Select(line =>
+        var rawLines = NormalizeMarkdown(markdown).Split('\n');
+        var resultLines = new List<string>();
+        int i = 0;
+        const string captionStyle = "display: inline-block; width: 100%; font-family: PingFangSC-Regular; font-weight: 400; font-size: 12px; color: rgb(167, 167, 167); letter-spacing: 0px; text-align: center;";
+
+        while (i < rawLines.Length)
         {
+            var line = rawLines[i];
             var trimmed = line.Trim();
-            return IsSafeImageTag(trimmed) ? trimmed : WebUtility.HtmlEncode(line);
-        }));
+
+            if (IsSafeImageTag(trimmed))
+            {
+                resultLines.Add(trimmed);
+                int nextIdx = i + 1;
+                while (nextIdx < rawLines.Length && string.IsNullOrEmpty(rawLines[nextIdx].Trim()))
+                {
+                    nextIdx++;
+                }
+
+                if (nextIdx < rawLines.Length)
+                {
+                    var nextTrimmed = rawLines[nextIdx].Trim();
+                    if (IsCaptionText(nextTrimmed))
+                    {
+                        var caption = NormalizeCaptionText(nextTrimmed);
+                        resultLines.Add($"<span class=\"image-caption\" style=\"{captionStyle}\">{WebUtility.HtmlEncode(caption)}</span>");
+                        i = nextIdx + 1;
+                        continue;
+                    }
+                }
+                i++;
+                continue;
+            }
+
+            if (IsCaptionText(trimmed))
+            {
+                var caption = NormalizeCaptionText(trimmed);
+                resultLines.Add($"<span class=\"image-caption\" style=\"{captionStyle}\">{WebUtility.HtmlEncode(caption)}</span>");
+                i++;
+                continue;
+            }
+
+            resultLines.Add(WebUtility.HtmlEncode(line));
+            i++;
+        }
+
+        var body = string.Join("<br>\n", resultLines);
         return WrapHtml(body, "Lark2Pad Export", EtherpadStyle);
     }
 
@@ -235,6 +275,205 @@ public sealed partial class Lark2PadService
             ? "html, body { background: #202020; color: #f3f3f3; } a { color: #7db7ff; } blockquote { border-left: 3px solid #6ea8fe; color: #c8c8c8; }"
             : "html, body { background: #ffffff; color: #202020; } a { color: #0f6cbd; } blockquote { border-left: 3px solid #0f6cbd; color: #4a4a4a; }";
         return WrapHtml(LazyLoadPreviewImages(builder.ToString()) + PreviewLazyLoadScript, "Lark2Pad Export", EtherpadStyle + "\n" + previewTheme);
+    }
+
+    private const string DefaultHeaderBannerURL = "https://s3.ifanr.com/images/ep/uploads/lark2pad_upload/4eab7d0a-39f1-41ae-b014-ae2163db4c4c.png";
+
+    private const string WeChatFooterBannerHtml = """
+    <section style="text-align: center;line-height: 0;box-sizing: border-box;margin-top: 26px;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;"><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCO5sTlJseFUfia8Hu5P9EWwc4YHFvbFXrYWWDVxISzy2Vl3HGU4ibnqLPR6U8BgFRGxhS86OwDH6OCMnIDr4UnyEhYy6dTib2qiaBA/640?wx_fmt=png" class="rich_pages wxw-img" style="vertical-align:middle;max-width:100%;width:100%;box-sizing:border-box;" width="100%"></section></section>
+    <section style="text-align: left;justify-content: flex-start;display: flex;flex-flow: row;box-sizing: border-box;margin-top: 16px;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;background-repeat: repeat;background-attachment: scroll;border-radius: 10px;overflow: hidden;background-image: url(&quot;https://mmbiz.qpic.cn/mmbiz_png/fc90sFPPBCMRTjiay36FKj1KwiaibBpEPbK583nGuBnJjNNeR13rq3IA6sia1fzibcJKicGLZcIfTOVU00ATFq7mmDMSKd18TqTmZzT7EmGykuQbk/640?wx_fmt=png&quot;);box-sizing: border-box;background-position: 0% 0% !important;background-size: auto !important;"><section style="justify-content: flex-start;display: flex;flex-flow: row;margin: 50px 0px 0px;box-sizing: border-box;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;box-sizing: border-box;"><section style="text-align: center;line-height: 0;box-sizing: border-box;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;"><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCP8MG80wljJC4cT2s8YibQ2t5hoaVEAoIZ8ftGmllAI5ehMD28ExTwBdfsibfyOqZBmTyjhrdXklbqcCa3CeMiaAXdeyzjKY11lIE/640?wx_fmt=png" class="rich_pages wxw-img" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></section></section></section></section><section style="justify-content: flex-start;display: flex;flex-flow: row;box-sizing: border-box;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;box-sizing: border-box;"><section style="text-align: center;line-height: 0;box-sizing: border-box;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;"><a href="https://mp.weixin.qq.com/s?__biz=MjgzMTAwODI0MA==&amp;mid=2652396877&amp;idx=2&amp;sn=dfef25453a6bf0dca147b0adca3deaf7&amp;scene=21#wechat_redirect" target="_blank"><span style="width:100%" class="js_jump_icon h5_image_link"><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCPyDFWbJT8y9ibibmFbtvMJbwHxCAZQskte81K91q7QwkwXPevnDR7bvHUD9ntPN43bDibM6svwxrCkBaVruzvjKVBLnTwJYk5pOk/640?wx_fmt=png" class="rich_pages wxw-img" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></span></a></section></section></section></section></section></section>
+    <section style="text-align: center;line-height: 0;box-sizing: border-box;margin-top:16px;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;border-radius: 10px;overflow: hidden;box-sizing: border-box;"><img src="https://mmbiz.qpic.cn/mmbiz_png/fc90sFPPBCNnChuCqY5TK78KORbHN3ficOaIgpjRfNqQWMJqRxxNGpMb2Om3ebIfpJGIs7nfu2WrCYzYjLkH6qicYms1ibfJbFujmoNFYaavpw/640?wx_fmt=png" class="rich_pages wxw-img" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></section></section>
+    private static bool IsCaptionText(string text)
+    {
+        var trimmed = text.Trim();
+        if (!trimmed.StartsWith("图")) return false;
+        var afterTu = trimmed[1..].Trim();
+        if (afterTu.Length == 0) return false;
+        var c = afterTu[0];
+        return c == '｜' || c == '|' || c == '：' || c == ':';
+    }
+
+    private static string NormalizeCaptionText(string text)
+    {
+        var trimmed = text.Trim();
+        if (!IsCaptionText(trimmed)) return text;
+        var afterTu = trimmed[1..].Trim();
+        var content = afterTu[1..].Trim();
+        return $"图｜{content}";
+    }
+
+    private static bool HasNextCaptionLine(int index, string[] lines)
+    {
+        int nextIdx = index + 1;
+        while (nextIdx < lines.Length)
+        {
+            var candidate = lines[nextIdx].Trim();
+            if (string.IsNullOrEmpty(candidate))
+            {
+                nextIdx++;
+                continue;
+            }
+            return IsCaptionText(candidate);
+        }
+        return false;
+    }
+
+    public static string BuildWeChatHtml(string markdown, bool roundImages = true, bool addHeaderBanner = false, bool addFooterBanner = false)
+    {
+        var imgRadius = roundImages ? "8px" : "0";
+        var builder = new StringBuilder();
+        const string pStyle = "margin: 26px 0; padding: 0 14px; font-size: 15px; color: #222222; text-align: justify; line-height: 27px; word-break: break-all; word-wrap: break-word; font-family: &quot;PingFangSC-Light&quot;;";
+        var inWeChatList = false;
+
+        if (addHeaderBanner)
+        {
+            builder.AppendLine($"<section style=\"text-align: left;justify-content: flex-start;display: flex;flex-flow: row;margin: 0px 0px 24px 0px;width: 100%;align-self: flex-start;background-color: rgb(255, 113, 20);border-radius: 10px;overflow: hidden;box-sizing: border-box;\"><section style=\"text-align: center;line-height: 0;width: 100%;box-sizing: border-box;\"><section style=\"max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;\" nodeleaf=\"\"><img src=\"{DefaultHeaderBannerURL}\" class=\"rich_pages wxw-img\" data-ratio=\"0.5333333333333333\" data-type=\"gif\" data-w=\"720\" style=\"vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;\"></section></section></section>");
+        }
+
+        var lines = NormalizeMarkdown(markdown).Split('\n');
+        for (int index = 0; index < lines.Length; index++)
+        {
+            var line = lines[index];
+            var trimmed = line.Trim();
+            if (string.IsNullOrEmpty(trimmed))
+            {
+                if (inWeChatList)
+                {
+                    builder.AppendLine("</section>");
+                    inWeChatList = false;
+                }
+                continue;
+            }
+
+            var isListItem = trimmed.StartsWith("- ") || trimmed.StartsWith("* ") || trimmed.StartsWith("▪ ") || trimmed.StartsWith("• ") || trimmed.StartsWith("■ ");
+            if (isListItem)
+            {
+                if (!inWeChatList)
+                {
+                    builder.AppendLine("<section style=\"margin: 32px 0; padding: 0 11px;\">");
+                    inWeChatList = true;
+                }
+                var rawText = trimmed[2..].Trim();
+                var itemStyle = "display: flex; margin-bottom: 8px; font-family: &quot;PingFangSC-Light&quot;; font-size: 15px; color: #363636; letter-spacing: 0; text-align: justify; line-height: 27px;";
+                var dotStyle = "margin-top: 10px; margin-right: 12px; width: 6px; height: 6px; background: #363636;";
+                builder.AppendLine($"<section style=\"{itemStyle}\"><section style=\"{dotStyle}\"></section><section style=\"flex: 1;\">{InlineWeChatHtml(rawText, imgRadius)}</section></section>");
+                continue;
+            }
+            else if (inWeChatList)
+            {
+                builder.AppendLine("</section>");
+                inWeChatList = false;
+            }
+
+            var hasCaption = HasNextCaptionLine(index, lines);
+            if (Regex.Match(trimmed, @"^!\[(?<alt>[^\]]*)\]\((?<url>[^)]+)\)$") is { Success: true } mdImg)
+            {
+                var alt = mdImg.Groups["alt"].Value;
+                var url = mdImg.Groups["url"].Value;
+                var marginStyle = hasCaption ? "margin: 30px 0 0 0;" : "margin: 30px 0 26px 0;";
+                var imageWrapperStyle = $"padding: 0 14px; {marginStyle} text-align: center; box-sizing: border-box;";
+                var imgStyle = $"width: 100%; max-width: 100%; height: auto; display: block; margin: 0 auto; border-radius: {imgRadius};";
+                builder.AppendLine($"<section style=\"{imageWrapperStyle}\" data-type=\"custom-block\"><img alt=\"{alt}\" src=\"{url}\" style=\"{imgStyle}\"></section>");
+                continue;
+            }
+
+            if (IsCaptionText(trimmed))
+            {
+                var caption = NormalizeCaptionText(trimmed);
+                var captionStyle = "display: inline-block; width: 100%; font-family: &quot;PingFang SC&quot;, system-ui, -apple-system, BlinkMacSystemFont, &quot;Helvetica Neue&quot;, Helvetica, Tahoma, Arial, &quot;Heiti SC&quot;, STHeiti, SimHei, sans-serif; font-weight: 400; font-size: 12px; color: rgb(167, 167, 167); letter-spacing: 0px; text-align: left; margin-left: 16px; margin-right: 16px; margin-bottom: 24px;";
+                builder.AppendLine($"<section style=\"{captionStyle}\" data-type=\"custom-block\">{InlineWeChatHtml(caption, imgRadius)}</section>");
+                continue;
+            }
+
+            if (Regex.Match(trimmed, "^(#{1,6})\\s+(.+)$") is { Success: true } heading)
+            {
+                var level = heading.Groups[1].Value.Length;
+                var rawContent = heading.Groups[2].Value.Trim();
+                if (rawContent.StartsWith("**") && rawContent.EndsWith("**") && rawContent.Length > 4)
+                {
+                    rawContent = rawContent[2..^2].Trim();
+                }
+
+                var (fontSize, lineHeight, margin) = level switch
+                {
+                    1 => ("24px", "32px", "62px 0 26px 0"),
+                    2 => ("22px", "30px", "62px 0 26px 0"),
+                    3 => ("20px", "28px", "62px 0 26px 0"),
+                    _ => ("18px", "26px", "42px 0 22px 0")
+                };
+                var hStyle = $"font-family: &quot;PingFangSC-Semibold&quot;; font-weight: 600; color: #FD4606; text-align: justify; line-height: {lineHeight}; margin: {margin}; padding: 0 14px; font-size: {fontSize};";
+                builder.AppendLine($"<h3 style=\"{hStyle}\">{InlineWeChatHtml(rawContent, imgRadius)}</h3>");
+            }
+
+            else if (trimmed.StartsWith("> "))
+            {
+                var bqStyle = "padding: 0 15px; border-left: 4px solid #D8D8D8; padding-left: 14px; font-family: &quot;PingFangSC-Light&quot;, sans-serif; font-weight: 600; font-size: 15px; color: #222222; text-align: justify; line-height: 27px; margin: 26px 0;";
+                builder.AppendLine($"<section style=\"{bqStyle}\">{InlineWeChatHtml(trimmed[2..], imgRadius)}</section>");
+            }
+            else if (trimmed.StartsWith("<"))
+            {
+                if (trimmed.Contains("<img", StringComparison.OrdinalIgnoreCase))
+                {
+                    var imageWrapperStyle = "padding: 0 14px; margin: 30px 0 26px 0; text-align: center; box-sizing: border-box;";
+                    var imgStyle = $"width: 100%; max-width: 100%; height: auto; display: block; margin: 0 auto; border-radius: {imgRadius};";
+                    var styledLine = !trimmed.Contains("style=", StringComparison.OrdinalIgnoreCase)
+                        ? trimmed.Replace("<img", $"<img style=\"{imgStyle}\"", StringComparison.OrdinalIgnoreCase)
+                        : trimmed;
+                    builder.AppendLine($"<section style=\"{imageWrapperStyle}\" data-type=\"custom-block\">{styledLine}</section>");
+                }
+                else
+                {
+                    builder.AppendLine(trimmed);
+                }
+            }
+            else
+            {
+                builder.AppendLine($"<section style=\"{pStyle}\">{InlineWeChatHtml(line, imgRadius)}</section>");
+            }
+        }
+
+        if (inWeChatList)
+        {
+            builder.AppendLine("</section>");
+            inWeChatList = false;
+        }
+
+        if (addFooterBanner)
+        {
+            builder.AppendLine(WeChatFooterBannerHtml);
+        }
+
+        return $"""
+            <!doctype html>
+            <html lang="zh-CN">
+            <head>
+            <meta charset="utf-8">
+            <title>Lark2Pad WeChat Export</title>
+            </head>
+            <body>
+            <section style="font-family: &quot;PingFang SC&quot;, system-ui, -apple-system, BlinkMacSystemFont, &quot;Helvetica Neue&quot;, Helvetica, Tahoma, Arial, &quot;Heiti SC&quot;, STHeiti, SimHei, sans-serif; word-break: break-all; word-wrap: break-word;">
+            {builder}
+            </section>
+            </body>
+            </html>
+            """;
+    }
+
+    private static string InlineWeChatHtml(string value, string imgRadius)
+    {
+        var trimmed = value.Trim();
+        if (IsSafeImageTag(trimmed))
+        {
+            return trimmed.Contains("style=", StringComparison.OrdinalIgnoreCase)
+                ? trimmed
+                : trimmed.Replace("<img", $"<img style=\"max-width: 100%; height: auto; margin: 18px auto; display: block; border-radius: {imgRadius};\"", StringComparison.OrdinalIgnoreCase);
+        }
+        var encoded = WebUtility.HtmlEncode(value);
+        var imgStyle = $"max-width: 100%; height: auto; margin: 18px auto; display: block; border-radius: {imgRadius};";
+        encoded = Regex.Replace(encoded, @"!\[([^\]]*)\]\((https?://[^\s)]+)\)", $"<img src=\"$2\" alt=\"$1\" style=\"{imgStyle}\">");
+        encoded = Regex.Replace(encoded, @"\[([^\]]+)\]\((https?://[^\s)]+)\)", "<a href=\"$2\" style=\"color: #576b95; text-decoration: none;\">$1</a>");
+        encoded = Regex.Replace(encoded, @"\*\*(.+?)\*\*", "<strong style=\"font-weight: bold; color: #111111;\">$1</strong>");
+        return Regex.Replace(encoded, @"(?<!\*)\*([^*]+)\*(?!\*)", "<em style=\"font-style: italic;\">$1</em>");
     }
 
     private static string InlineHtml(string value)

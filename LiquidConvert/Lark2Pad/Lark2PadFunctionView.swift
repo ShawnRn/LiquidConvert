@@ -19,6 +19,10 @@ struct Lark2PadFunctionView: View {
     @State private var isSyncingToPad = false
     @AppStorage("lark2pad_auto_upload") private var autoUploadImages = true
     @AppStorage("lark2pad_round_images") private var roundImages = true
+    @AppStorage("lark2pad_add_header_banner") private var addHeaderBanner = true
+    @AppStorage("lark2pad_add_footer_banner") private var addFooterBanner = true
+    @State private var showSettingsSheet = false
+    @State private var isCopyingWeChat = false
     @Environment(\.colorScheme) private var colorScheme
     
     // Animation Namespace
@@ -58,6 +62,14 @@ struct Lark2PadFunctionView: View {
         .contentShape(Rectangle())
         .task {
             await coordinator.prepareEngine()
+        }
+        .sheet(isPresented: $showSettingsSheet) {
+            ConversionSettingsSheet(
+                autoUploadImages: $autoUploadImages,
+                roundImages: $roundImages,
+                addHeaderBanner: $addHeaderBanner,
+                addFooterBanner: $addFooterBanner
+            )
         }
         .sheet(isPresented: $showLoginSheet, onDismiss: {
             coordinator.checkLoginStatus()
@@ -153,25 +165,27 @@ struct Lark2PadFunctionView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 
-                HStack(spacing: 16) {
-                    Toggle("自动上传图片到私有图床", isOn: $autoUploadImages)
-                        .toggleStyle(.checkbox)
-                    
-                    Toggle("自动裁剪圆角", isOn: $roundImages)
-                        .toggleStyle(.checkbox)
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
-                
-                Button(action: { showLoginSheet = true }) {
-                    Label(coordinator.isLoggedIntoEtherpad ? "已登录公司账号" : "登录公司账号同步 Session", 
-                          systemImage: coordinator.isLoggedIntoEtherpad ? "person.badge.shield.checkmark.fill" : "person.badge.key.fill")
+                HStack(spacing: 12) {
+                    Button(action: { showLoginSheet = true }) {
+                        Label(coordinator.isLoggedIntoEtherpad ? "已登录公司账号" : "登录公司账号同步 Session", 
+                              systemImage: coordinator.isLoggedIntoEtherpad ? "person.badge.shield.checkmark.fill" : "person.badge.key.fill")
+                            .font(.caption)
+                            .foregroundStyle(coordinator.isLoggedIntoEtherpad ? .green : .blue)
+                    }
+                    .buttonStyle(.plain)
+
+                    Text("•")
                         .font(.caption)
-                        .foregroundStyle(coordinator.isLoggedIntoEtherpad ? .green : .blue)
+                        .foregroundStyle(.tertiary)
+
+                    Button(action: { showSettingsSheet = true }) {
+                        Label("排版与转换设置", systemImage: "slider.horizontal.3")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                .padding(.top, 2)
+                .padding(.top, 4)
             }
         }
     }
@@ -426,13 +440,21 @@ struct Lark2PadFunctionView: View {
             .controlSize(.large)
 
             Button(action: copyToWeChat) {
-                Label("复制到公众号", systemImage: "paperplane.fill")
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 6) {
+                    if isCopyingWeChat {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("公众号排版生成中...")
+                    } else {
+                        Label("复制到公众号", systemImage: "paperplane.fill")
+                    }
+                }
+                .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .tint(.green)
             .controlSize(.large)
-            .disabled(coordinator.markdownResult.isEmpty || coordinator.previewHTML.isEmpty)
+            .disabled(isCopyingWeChat || coordinator.markdownResult.isEmpty || coordinator.previewHTML.isEmpty)
 
             Button(action: { showExporter = true }) {
                 Label("保存 HTML", systemImage: "arrow.down.doc")
@@ -441,8 +463,20 @@ struct Lark2PadFunctionView: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
 
-            Button(action: syncToPad) {
-                Label(isSyncingToPad ? "同步中" : "同步到 Pad", systemImage: isSyncingToPad ? "arrow.triangle.2.circlepath" : "icloud.and.arrow.up")
+            Menu {
+                Button(action: syncToPad) {
+                    Label("仅同步到 Pad", systemImage: "icloud.and.arrow.up")
+                }
+                Divider()
+                Section("一键转存至公众号草稿箱 (Pad send2cms)") {
+                    ForEach(EtherpadSyncService.availableCMSChannels) { channel in
+                        Button(action: { syncAndSend2CMS(channel: channel.id) }) {
+                            Label("发送至 \(channel.name)", systemImage: "paperplane")
+                        }
+                    }
+                }
+            } label: {
+                Label(isSyncingToPad ? "处理中..." : "同步 / 发布至公众号", systemImage: isSyncingToPad ? "arrow.triangle.2.circlepath" : "icloud.and.arrow.up")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -567,12 +601,31 @@ struct Lark2PadFunctionView: View {
     }
 
     private func copyToWeChat() {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        // 将预览 HTML 同时写入 .html 和 .string，以使直接在微信公众号编辑器粘贴时自动解析为富文本样式
-        pb.setString(coordinator.previewHTML, forType: .html)
-        pb.setString(coordinator.previewHTML, forType: .string)
-        showToast("已成功复制富文本！可直接在公众号编辑器中 ⌘V 粘贴。")
+        guard !isCopyingWeChat else { return }
+        isCopyingWeChat = true
+
+        let markdown = coordinator.markdownResult
+        let roundImgs = roundImages
+        let addHeader = addHeaderBanner
+        let addFooter = addFooterBanner
+
+        Task {
+            let wechatHTML = await EtherpadExporter.buildWeChatHTMLAsync(
+                from: markdown,
+                roundImages: roundImgs,
+                addHeaderBanner: addHeader,
+                addFooterBanner: addFooter
+            )
+
+            await MainActor.run {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(wechatHTML, forType: .html)
+                pb.setString(markdown, forType: .string)
+                isCopyingWeChat = false
+                showToast("已复制公众号排版！如提示图片载入失败，可直接使用右侧【同步 / 发布至公众号】。")
+            }
+        }
     }
 
     private func syncToPad() {
@@ -598,6 +651,34 @@ struct Lark2PadFunctionView: View {
                 await MainActor.run {
                     isSyncingToPad = false
                     showToast("同步失败: \(error.localizedDescription)", isError: true)
+                }
+            }
+        }
+    }
+
+    private func syncAndSend2CMS(channel: String) {
+        guard coordinator.isLoggedIntoEtherpad else {
+            showToast("请先登录公司 Etherpad 账号", isError: true)
+            return
+        }
+
+        isSyncingToPad = true
+        let markdown = coordinator.markdownResult
+        let html = coordinator.etherpadHTML
+
+        Task {
+            do {
+                let result = try await EtherpadSyncService.sync(markdown: markdown, html: html)
+                _ = try await EtherpadSyncService.sendToCMS(padID: result.padID, channel: channel)
+                await MainActor.run {
+                    isSyncingToPad = false
+                    showToast("已成功同步并发布至公众号草稿箱（\(channel)）！")
+                    NSWorkspace.shared.open(result.url)
+                }
+            } catch {
+                await MainActor.run {
+                    isSyncingToPad = false
+                    showToast("发布失败: \(error.localizedDescription)", isError: true)
                 }
             }
         }
