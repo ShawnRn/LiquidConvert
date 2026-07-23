@@ -14,17 +14,9 @@
 4.  **Generate Appcast**: Local run of `release.sh`. This script must sign the bytes users actually download from GitHub Release, not blindly trust the local DMG. If the local machine does not have `SPARKLE_PRIVATE_KEY` or the Sparkle Keychain private key, do not fabricate or copy signatures; use the manual Release workflow after the script and workflow safety checks are committed.
 5.  **Final Push**: Commit and push `appcast.xml` ONLY after step 3 is confirmed.
 
-## GitHub Actions Rule
-- `.github/workflows/release.yml` is a manual `workflow_dispatch` fallback only. Do not rely on tag pushes for routine releases.
-- If the workflow ever updates `appcast.xml`, it must snapshot the generated appcast, restore the dirty checkout copy, switch to the latest default branch, then re-apply the snapshot before committing. Otherwise `git switch` can fail with “local changes would be overwritten,” which already broke the v3.1.7 tag run.
-- Local releases should not create a race with Actions. Prefer one writer for `appcast.xml`; normally that writer is the local terminal workflow, but when the private key is only available as a GitHub secret, the manual workflow is the appcast writer.
-
-## CI And Manual Hotfix Concurrency Rule
-- Release workflows triggered by tag pushes run from a detached tag checkout. They must not directly commit and push `appcast.xml` from that detached HEAD to `main`.
-- Before committing generated `appcast.xml`, CI must snapshot the generated file, fetch the latest default branch, switch to `origin/main`, then re-apply the snapshot and commit from there.
-- If the generated `appcast.xml` SHA already matches `origin/main:appcast.xml`, the workflow must exit successfully without committing.
-- If a push is rejected because `main` advanced during a manual hotfix, CI must fetch `origin/main` again and re-compare. If the remote appcast now matches the generated snapshot, treat it as success, not a release failure.
-- Manual hotfixes that replace an existing tag/release should either let CI own the appcast push or perform the final appcast push locally, but not rely on both writers racing. When both paths run, the SHA comparison rule above is mandatory.
+## Local Xcode Packaging Rule
+- GitHub Actions automated Mac releases are deprecated. Routine Mac releases MUST be built and packaged using local Xcode via `./scripts/build.sh release`.
+- `release.sh` runs locally to download published release assets, calculate byte lengths, generate Sparkle EdDSA signatures (`sparkle:edSignature`), and update `appcast.xml`.
 
 ## Sparkle Verification Rule
 - Before `appcast.xml` is committed, re-download every release asset from GitHub and use those remote bytes to compute `sparkle:edSignature` and `length`.

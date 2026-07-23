@@ -35,9 +35,7 @@ gh release create "v$VERSION" "releases/LiquidConvert_${VERSION}_arm64.dmg" "rel
 ```
 
 ### 第四步：用远端资产生成 Sparkle appcast
-GitHub Release 创建并确认两个 DMG 都能下载后，再调用发布脚本生成 `appcast.xml`。该脚本会优先重新下载 GitHub Release 上真实可被用户下载到的资产，并以远端字节生成 `length` 与 `sparkle:edSignature`。
-
-如果本机没有 `SPARKLE_PRIVATE_KEY` 或 Sparkle Keychain 私钥，不要继续生成本地 appcast。先确认 `release.sh` 会在签名失败时退出，再手动触发 GitHub `Release` workflow 并勾选 `update_appcast`，让 Actions 使用仓库 secret 生成 appcast。
+GitHub Release 创建并确认两个 DMG 都能下载后，在本地调用发布脚本生成 `appcast.xml`。该脚本会重新下载 GitHub Release 上真实可被用户下载到的资产，并以远端字节生成 `length` 与 `sparkle:edSignature`。
 
 // turbo
 ```bash
