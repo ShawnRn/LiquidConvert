@@ -325,8 +325,16 @@ struct CameraShutterCountView: View {
                 .foregroundColor(.primary)
             
             VStack(spacing: 1) {
-                ExifDetailRow(leftTitle: "相机型号", leftValue: "\(res.cameraMake ?? "") \(res.cameraModel ?? "未知型号")".trimmingCharacters(in: .whitespaces),
-                              rightTitle: "机身序号", rightValue: res.serialNumber ?? "N/A")
+                let modelValue: String = {
+                    if let serial = res.serialNumber, !serial.isEmpty, serial != "N/A" {
+                        return "\(res.cameraModel ?? "未知型号") (\(serial))"
+                    } else {
+                        return res.cameraModel ?? "未知型号"
+                    }
+                }()
+                
+                ExifDetailRow(leftTitle: "相机制造商", leftValue: res.cameraMake ?? "未知制造商",
+                              rightTitle: "相机型号", rightValue: modelValue)
                 
                 Divider().opacity(0.3)
                 
