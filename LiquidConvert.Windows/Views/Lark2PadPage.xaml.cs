@@ -28,6 +28,22 @@ public sealed partial class Lark2PadPage : Page
     private void Lark2PadPage_Loaded(object sender, RoutedEventArgs e)
     {
         UpdateLoginStateUI();
+
+        _isInitializing = true;
+        AutoUploadToggle.IsOn = SettingsStore.LarkAutoUpload;
+        RoundImagesToggle.IsOn = SettingsStore.LarkRoundImages;
+        AddHeaderToggle.IsOn = SettingsStore.LarkAddHeader;
+        AddFooterToggle.IsOn = SettingsStore.LarkAddFooter;
+        _isInitializing = false;
+    }
+
+    private void Settings_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_isInitializing) return;
+        SettingsStore.LarkAutoUpload = AutoUploadToggle.IsOn;
+        SettingsStore.LarkRoundImages = RoundImagesToggle.IsOn;
+        SettingsStore.LarkAddHeader = AddHeaderToggle.IsOn;
+        SettingsStore.LarkAddFooter = AddFooterToggle.IsOn;
     }
 
     private void UpdateLoginStateUI()
@@ -199,23 +215,49 @@ public sealed partial class Lark2PadPage : Page
         }
     }
 
-    private void LarkCopyWeChat_Click(object sender, RoutedEventArgs e)
+    private async void LarkCopyWeChat_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrEmpty(_currentEtherpadHtml)) return;
-        var dp = new DataPackage();
-        dp.SetHtmlFormat(DataPackageViewHelper.ToHtmlFormat(_currentEtherpadHtml));
-        Clipboard.SetContent(dp);
-        LarkStatus.Text = "已复制为微信公众号富文本样式！可以直接在公众号后台粘贴。";
+        if (string.IsNullOrEmpty(_currentMarkdown)) return;
+        CopyWeChatButton.IsEnabled = false;
+        CopyWeChatButton.Content = "排版生成中...";
+        LarkStatus.Text = "正在下载外部图床图片并转换 Base64 排版，请稍候...";
+
+        try
+        {
+            var baseWeChatHtml = Lark2PadService.BuildWeChatHtml(
+                _currentMarkdown,
+                roundImages: SettingsStore.LarkRoundImages,
+                addHeaderBanner: SettingsStore.LarkAddHeader,
+                addFooterBanner: SettingsStore.LarkAddFooter
+            );
+
+            var base64Html = await Lark2PadService.Instance.ConvertImageUrlsToBase64DataUrisAsync(baseWeChatHtml);
+
+            var dp = new DataPackage();
+            dp.SetHtmlFormat(DataPackageViewHelper.ToHtmlFormat(base64Html));
+            dp.SetText(_currentMarkdown);
+            Clipboard.SetContent(dp);
+            LarkStatus.Text = "已复制公众号排版！若出现加载缓慢，推荐使用一键同步至公众号草稿箱。";
+        }
+        catch (Exception ex)
+        {
+            LarkStatus.Text = $"排版失败: {ex.Message}";
+        }
+        finally
+        {
+            CopyWeChatButton.IsEnabled = true;
+            CopyWeChatButton.Content = "复制到公众号";
+        }
     }
 
     private async void LarkSync_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrEmpty(_currentEtherpadHtml)) return;
+        if (string.IsNullOrEmpty(_currentMarkdown)) return;
         LarkStatus.Text = "正在同步到 Pad...";
 
         try
         {
-            await Lark2PadService.Instance.SyncToPadAsync(_currentEtherpadHtml);
+            await Lark2PadService.Instance.SyncToPadAsync(_currentMarkdown);
             LarkStatus.Text = "已成功同步到 Pad！";
             var dialog = new ContentDialog
             {
@@ -229,6 +271,67 @@ public sealed partial class Lark2PadPage : Page
         catch (Exception ex)
         {
             LarkStatus.Text = $"同步失败: {ex.Message}";
+        }
+    }
+
+    private async void CmsPublish_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuFlyoutItem item && item.Tag is string channel)
+        {
+            if (string.IsNullOrEmpty(_currentMarkdown)) return;
+
+            if (!Lark2PadService.Instance.IsLoggedIn)
+            {
+                LarkStatus.Text = "发布失败：请先登录 Etherpad 账号。";
+                var warningDialog = new ContentDialog
+                {
+                    Title = "需要登录",
+                    Content = "请先在右上角点击“登录 Etherpad”，并输入公司账号密码同步 Session。",
+                    CloseButtonText = "确定",
+                    XamlRoot = XamlRoot
+                };
+                await warningDialog.ShowAsync();
+                return;
+            }
+
+            SyncSplitButton.IsEnabled = false;
+            LarkStatus.Text = $"正在同步并一键发布至 {item.Text} 草稿箱...";
+
+            try
+            {
+                var padUrl = await Lark2PadService.Instance.SyncToPadAsync(_currentMarkdown);
+                var padId = padUrl.Segments.Last();
+
+                await Lark2PadService.Instance.SendToCMSAsync(padId, channel);
+                LarkStatus.Text = $"成功同步并发布至 {item.Text} 草稿箱！";
+
+                var successDialog = new ContentDialog
+                {
+                    Title = "发布成功",
+                    Content = $"文档已成功同步转存至 {item.Text} 微信草稿箱。\n同步 Pad ID: {padId}",
+                    CloseButtonText = "确定",
+                    XamlRoot = XamlRoot
+                };
+                await successDialog.ShowAsync();
+
+                await Windows.System.Launcher.LaunchUriAsync(padUrl);
+            }
+            catch (Exception ex)
+            {
+                LarkStatus.Text = $"一键发布失败: {ex.Message}";
+                var errDialog = new ContentDialog
+                {
+                    Title = "转存失败",
+                    Content = ex.Message,
+                    CloseButtonText = "确定",
+                    XamlRoot = XamlRoot
+                };
+                await errDialog.ShowAsync();
+            }
+            finally
+            {
+                SyncSplitButton.IsEnabled = true;
+            }
         }
     }
 }

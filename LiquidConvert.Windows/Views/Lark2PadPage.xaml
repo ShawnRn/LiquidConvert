@@ -26,6 +26,23 @@
                 <Ellipse x:Name="LarkLoginIndicator" Width="8" Height="8" Fill="#94A3B8" VerticalAlignment="Center" />
                 <TextBlock x:Name="LarkLoginStatus" Text="未登录" FontSize="12" Opacity="0.68" VerticalAlignment="Center" />
                 <Button x:Name="LarkLoginButton" Content="登录 Etherpad" Click="LarkLogin_Click" Padding="14,6" />
+                <Button x:Name="LarkSettingsButton" ToolTipService.ToolTip="排版与转换偏好设置" Padding="10,6">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon Glyph="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="14" />
+                        <TextBlock Text="排版设置" FontSize="12" />
+                    </StackPanel>
+                    <Button.Flyout>
+                        <Flyout x:Name="SettingsFlyout">
+                            <StackPanel Width="280" Spacing="12" Padding="4">
+                                <TextBlock Text="排版与转换偏好" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,4"/>
+                                <ToggleSwitch x:Name="AutoUploadToggle" Header="自动上传图片到私有图床" Description="下载图片并上传至公司 S3" IsOn="True" Toggled="Settings_Toggled" />
+                                <ToggleSwitch x:Name="RoundImagesToggle" Header="自动裁剪图片贝塞尔圆角" Description="应用与 Pad 一致的圆角" IsOn="True" Toggled="Settings_Toggled" />
+                                <ToggleSwitch x:Name="AddHeaderToggle" Header="添加文章开头版式" Description="插入 Discover 橙色 Banner" IsOn="True" Toggled="Settings_Toggled" />
+                                <ToggleSwitch x:Name="AddFooterToggle" Header="添加文章结尾版式" Description="末尾追加底卡与二维码" IsOn="True" Toggled="Settings_Toggled" />
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
             </StackPanel>
         </Grid>
 
@@ -39,7 +56,7 @@
                     </Border>
                     <StackPanel Spacing="6" HorizontalAlignment="Center">
                         <TextBlock Text="点击读取剪贴板，或拖入 Markdown 文件" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                        <TextBlock Text="支持飞书富文本剪贴板，以及 .md、.markdown、.txt 文件。" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460" Opacity="0.62" />
+                        <TextBlock Text="支持飞书富文本剪贴板，以及 .md、.markdown、 .txt 文件。" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460" Opacity="0.62" />
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
@@ -88,8 +105,24 @@
                     <Button Content="复制 Markdown" Click="LarkCopyMarkdown_Click" Padding="14,8" />
                     <Button Content="复制 Etherpad" Click="LarkCopyEtherpad_Click" Padding="14,8" />
                     <Button Content="保存 HTML" Click="LarkExport_Click" Padding="14,8" />
-                    <Button Content="复制到公众号" Click="LarkCopyWeChat_Click" Padding="14,8" />
-                    <Button Content="同步到 Pad" Click="LarkSync_Click" Style="{StaticResource PrimaryButtonStyle}" Padding="20,8" />
+                    <Button x:Name="CopyWeChatButton" Content="复制到公众号" Click="LarkCopyWeChat_Click" Padding="14,8" />
+                    <SplitButton x:Name="SyncSplitButton" Content="同步到 Pad" Click="LarkSync_Click" Style="{StaticResource AccentSplitButtonStyle}">
+                        <SplitButton.Flyout>
+                            <MenuFlyout Placement="Top">
+                                <MenuFlyoutItem Text="仅同步到 Pad" Click="LarkSync_Click" />
+                                <MenuFlyoutSeparator />
+                                <TextBlock Text="一键转存至公众号草稿箱 (Pad send2cms)" Margin="12,4,12,4" FontSize="11" Opacity="0.5" />
+                                <MenuFlyoutItem Text="发送至 ifanr 早报" Click="CmsPublish_Click" Tag="ifanr-morning-paper" />
+                                <MenuFlyoutItem Text="发送至 ifanr 推文" Click="CmsPublish_Click" Tag="ifanr" />
+                                <MenuFlyoutItem Text="发送至 APPSO 早报" Click="CmsPublish_Click" Tag="appso-morning-paper" />
+                                <MenuFlyoutItem Text="发送至 APPSO 推文" Click="CmsPublish_Click" Tag="appso" />
+                                <MenuFlyoutItem Text="发送至 董车会早报" Click="CmsPublish_Click" Tag="intelligentcar-morning-paper" />
+                                <MenuFlyoutItem Text="发送至 董车会推文" Click="CmsPublish_Click" Tag="intelligentcar" />
+                                <MenuFlyoutItem Text="发送至 知晓云" Click="CmsPublish_Click" Tag="minapp" />
+                                <MenuFlyoutItem Text="发送至 WordPress" Click="CmsPublish_Click" Tag="wordpress" />
+                            </MenuFlyout>
+                        </SplitButton.Flyout>
+                    </SplitButton>
                 </StackPanel>
 
                 <TextBlock x:Name="FooterInfoText" Text="导入文档后可解锁微信公众号排版与 Pad 云端同步能力。" VerticalAlignment="Center" Opacity="0.65" />

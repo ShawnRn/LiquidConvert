@@ -14,6 +14,10 @@ public static class SettingsStore
     private const string PadIdKey = "settings.pad-id";
     private const string CmsEndpointKey = "settings.cms-endpoint";
     private const string AutoFormatKey = "settings.auto-format";
+    private const string LarkAutoUploadKey = "settings.lark-auto-upload";
+    private const string LarkRoundImagesKey = "settings.lark-round-images";
+    private const string LarkAddHeaderKey = "settings.lark-add-header";
+    private const string LarkAddFooterKey = "settings.lark-add-footer";
     private static readonly object Gate = new();
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -71,6 +75,30 @@ public static class SettingsStore
     {
         get => Get(AutoFormatKey) != "false";
         set => Set(AutoFormatKey, value ? "true" : "false");
+    }
+
+    public static bool LarkAutoUpload
+    {
+        get => Get(LarkAutoUploadKey) != "false";
+        set => Set(LarkAutoUploadKey, value ? "true" : "false");
+    }
+
+    public static bool LarkRoundImages
+    {
+        get => Get(LarkRoundImagesKey) != "false";
+        set => Set(LarkRoundImagesKey, value ? "true" : "false");
+    }
+
+    public static bool LarkAddHeader
+    {
+        get => Get(LarkAddHeaderKey) != "false";
+        set => Set(LarkAddHeaderKey, value ? "true" : "false");
+    }
+
+    public static bool LarkAddFooter
+    {
+        get => Get(LarkAddFooterKey) != "false";
+        set => Set(LarkAddFooterKey, value ? "true" : "false");
     }
 
     public static string? Get(string key)

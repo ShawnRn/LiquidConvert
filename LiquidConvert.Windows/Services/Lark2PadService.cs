@@ -711,6 +711,115 @@ public sealed partial class Lark2PadService
         SettingsStore.Set(PadIdsKey, JsonSerializer.Serialize(used));
     }
     private static List<CookieRecord> LoadCookies() => SettingsStore.Get(CookieKey) is string saved ? JsonSerializer.Deserialize<List<CookieRecord>>(saved) ?? [] : [];
+
+    public sealed record CMSChannel(string Id, string Name);
+
+    public static readonly List<CMSChannel> AvailableCMSChannels = new()
+    {
+        new CMSChannel("ifanr-morning-paper", "ifanr 早报"),
+        new CMSChannel("ifanr", "ifanr 推文"),
+        new CMSChannel("appso-morning-paper", "APPSO 早报"),
+        new CMSChannel("appso", "APPSO 推文"),
+        new CMSChannel("intelligentcar-morning-paper", "董车会早报"),
+        new CMSChannel("intelligentcar", "董车会推文"),
+        new CMSChannel("minapp", "知晓云"),
+        new CMSChannel("wordpress", "WordPress")
+    };
+
+    private static readonly Dictionary<string, string> DataUriCache = new(StringComparer.OrdinalIgnoreCase);
+
+    public async Task<string> ConvertImageUrlsToBase64DataUrisAsync(string html)
+    {
+        var result = html;
+        var pattern = @"<img\b[^>]*?\bsrc=[""'](?<url>https?://[^""']+)[""']";
+        var matches = Regex.Matches(html, pattern, RegexOptions.IgnoreCase);
+
+        var urlsToFetch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match match in matches)
+        {
+            if (match.Groups["url"].Success)
+            {
+                var url = match.Groups["url"].Value;
+                lock (DataUriCache)
+                {
+                    if (DataUriCache.ContainsKey(url))
+                    {
+                        result = result.Replace(url, DataUriCache[url]);
+                        continue;
+                    }
+                }
+                urlsToFetch.Add(url);
+            }
+        }
+
+        if (urlsToFetch.Count == 0) return result;
+
+        using var client = new HttpClient();
+        client.Timeout = TimeSpan.FromSeconds(15);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+        foreach (var urlStr in urlsToFetch)
+        {
+            try
+            {
+                var response = await client.GetAsync(urlStr);
+                if (response.IsSuccessStatusCode)
+                {
+                    var data = await response.Content.ReadAsByteArrayAsync();
+                    var mime = response.Content.Headers.ContentType?.MediaType ?? "image/png";
+                    var base64 = Convert.ToBase64String(data);
+                    var dataUri = $"data:{mime};base64,{base64}";
+
+                    lock (DataUriCache)
+                    {
+                        DataUriCache[urlStr] = dataUri;
+                    }
+                    result = result.Replace(urlStr, dataUri);
+                }
+            }
+            catch (Exception ex)
+            {
+                LarkDiagnosticLog.Write($"Base64 download failed for {urlStr}: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    public async Task<string> SendToCMSAsync(string padID, string channel)
+    {
+        var cookies = LoadCookies();
+        if (cookies.Count == 0)
+        {
+            throw new InvalidOperationException("请先登录公司 Etherpad 账号，同步 Session。");
+        }
+
+        var cookieHeader = string.Join("; ", cookies.Select(c => $"{c.Name}={c.Value}"));
+        var server = SettingsStore.LarkServer.TrimEnd('/');
+        var encodedPadID = Uri.EscapeDataString(padID);
+        var encodedChannel = Uri.EscapeDataString(channel);
+
+        var cmsUrl = $"{server}/p/{encodedPadID}/send2cms/{encodedChannel}";
+        var padUrl = $"{server}/p/{encodedPadID}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, cmsUrl);
+        request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        request.Headers.Add("Origin", server);
+        request.Headers.Add("Referer", padUrl);
+        request.Headers.Add("X-Requested-With", "XMLHttpRequest");
+        request.Headers.Add("Cookie", cookieHeader);
+
+        using var client = new HttpClient();
+        var response = await client.SendAsync(request);
+        var responseText = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"服务器拒绝发布 (HTTP {response.StatusCode}): {responseText}");
+        }
+
+        return responseText;
+    }
 }
 
 public sealed record CookieRecord(string Name, string Value, string? Path);

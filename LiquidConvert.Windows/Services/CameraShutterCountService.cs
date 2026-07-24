@@ -227,8 +227,13 @@ public sealed class CameraShutterCountService
 
     private (int? Count, string? TagInfo) ParseNikonShutterCount(byte[] buffer, int length)
     {
-        var count = FindUInt32Tag(buffer, length, new byte[] { 0xA7, 0x00 }, new byte[] { 0x00, 0xA7 });
-        return count.HasValue ? (count, "Nikon MakerNote (Tag 0x00a7)") : (null, null);
+        var mechCount = FindUInt32Tag(buffer, length, new byte[] { 0x37, 0x00 }, new byte[] { 0x00, 0x37 });
+        if (mechCount.HasValue)
+        {
+            return (mechCount, "Nikon MakerNote (Tag 0x0037)");
+        }
+        var totalCount = FindUInt32Tag(buffer, length, new byte[] { 0xA7, 0x00 }, new byte[] { 0x00, 0xA7 });
+        return totalCount.HasValue ? (totalCount, "Nikon MakerNote (Tag 0x00a7)") : (null, null);
     }
 
     private (int? Count, string? TagInfo) ParseFujiShutterCount(byte[] buffer, int length)

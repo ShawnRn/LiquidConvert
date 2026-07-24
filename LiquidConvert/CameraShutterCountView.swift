@@ -335,12 +335,12 @@ struct CameraShutterCountView: View {
                 
                 Divider().opacity(0.3)
                 
-                ExifDetailRow(leftTitle: "光圈系数", leftValue: res.aperture ?? "-",
-                              rightTitle: "曝光时间", rightValue: res.shutterSpeed ?? "-")
+                ExifDetailRow(leftTitle: "光圈", leftValue: res.aperture ?? "-",
+                              rightTitle: "快门速度", rightValue: res.shutterSpeed ?? "-")
                 
                 Divider().opacity(0.3)
                 
-                ExifDetailRow(leftTitle: "感光指数", leftValue: res.iso ?? "-",
+                ExifDetailRow(leftTitle: "ISO", leftValue: res.iso ?? "-",
                               rightTitle: "图片名称", rightValue: res.fileName)
                 
                 Divider().opacity(0.3)
@@ -372,7 +372,7 @@ struct CameraShutterCountView: View {
             }
             
             if let lat = res.latitude, let lon = res.longitude {
-                Map(coordinateRegion: .constant(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: lat, longitude: lon), span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05))))
+                MapViewRepresentable(latitude: lat, longitude: lon)
                     .frame(height: 160)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .overlay(
@@ -549,5 +549,32 @@ private struct ExifDetailRow: View {
             .frame(maxWidth: .infinity)
         }
         .padding(.vertical, 8)
+    }
+}
+
+struct MapViewRepresentable: NSViewRepresentable {
+    let latitude: Double
+    let longitude: Double
+    
+    func makeNSView(context: Context) -> MKMapView {
+        let mapView = MKMapView()
+        mapView.showsZoomControls = true
+        mapView.isZoomEnabled = true
+        mapView.isScrollEnabled = true
+        mapView.isPitchEnabled = false
+        mapView.isRotateEnabled = false
+        return mapView
+    }
+    
+    func updateNSView(_ nsView: MKMapView, context: Context) {
+        let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        let region = MKCoordinateRegion(center: coordinate, span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02))
+        nsView.setRegion(region, animated: false)
+        
+        nsView.removeAnnotations(nsView.annotations)
+        
+        let annotation = MKPointAnnotation()
+        annotation.coordinate = coordinate
+        nsView.addAnnotation(annotation)
     }
 }

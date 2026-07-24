@@ -296,8 +296,15 @@ public final class CameraShutterCountParser: Sendable {
         
         // 其它品牌匹配...
         if make.contains("NIKON") {
-            if let nikonCount = findTagUInt32(data: data, start: mnOff, count: mnLen, isLE: isLE, targetTag: 0x00a7) {
-                return (nikonCount, nikonCount, "Nikon Tag (0x00a7)")
+            // 优先查找 Tag 0x0037 (纯机械快门数 MechanicalShutterCount)
+            let mechCount = findTagUInt32(data: data, start: mnOff, count: mnLen, isLE: isLE, targetTag: 0x0037)
+            // 兜底查找 Tag 0x00a7 (总快门释放数 ShutterCount)
+            let totalCount = findTagUInt32(data: data, start: mnOff, count: mnLen, isLE: isLE, targetTag: 0x00a7)
+            
+            if let mech = mechCount {
+                return (mech, totalCount ?? mech, "Nikon Tag (0x0037)")
+            } else if let total = totalCount {
+                return (total, total, "Nikon Tag (0x00a7)")
             }
         }
         
