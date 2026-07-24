@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# LiquidConvert Sparkle 自动化发布脚本
+# LiquidConvert Sparkle 自动化发布脚本 (支持双架构 arm64 + x86_64)
 # 用法: ./scripts/release.sh <版本号>
 # 示例: ./scripts/release.sh 1.0.0
 
@@ -12,12 +12,12 @@ if [ -z "$VERSION" ]; then
 fi
 
 # 1. 配置路径
-# 获取脚本所在目录的上一级目录作为项目根目录
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 RELEASE_DIR="$PROJECT_DIR/releases"
 APPCAST_FILE="$PROJECT_DIR/appcast.xml"
 DMG_ARM64="$RELEASE_DIR/LiquidConvert_${VERSION}_arm64.dmg"
+DMG_X86_64="$RELEASE_DIR/LiquidConvert_${VERSION}_x86_64.dmg"
 PROJECT_FILE="$PROJECT_DIR/LiquidConvert.xcodeproj"
 SCHEME="LiquidConvert"
 REMOTE_VERIFY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/liquidconvert-release-verify.XXXXXX")"
@@ -39,12 +39,18 @@ fi
 
 # 检查 DMG 是否存在
 if [ ! -f "$DMG_ARM64" ]; then
-    echo "错误: 找不到 DMG 文件。"
+    echo "错误: 找不到 arm64 DMG 文件。"
     echo "请确保 $DMG_ARM64 存在于 $RELEASE_DIR 文件夹下"
     exit 1
 fi
 
-echo "--- 开始为版本 $VERSION 准备发布 ---"
+if [ ! -f "$DMG_X86_64" ]; then
+    echo "错误: 找不到 x86_64 DMG 文件。"
+    echo "请确保 $DMG_X86_64 存在于 $RELEASE_DIR 文件夹下"
+    exit 1
+fi
+
+echo "--- 开始为版本 $VERSION 准备发布 (双架构) ---"
 
 # 2. 从项目配置中读取 Build 号，确保与 App 本体一致
 echo "正在读取项目中的 Build 号..."
@@ -72,29 +78,36 @@ fi
 
 echo "使用项目 Build 号 (sparkle:version): $SPARKLE_VERSION"
 
-# 3. 生成签名与获取大⼩
+# 3. 校验 GitHub 资产
 PUB_DATE=$(date -R)
-
 URL_ARM64="https://github.com/ShawnRn/LiquidConvert/releases/download/v$VERSION/LiquidConvert_${VERSION}_arm64.dmg"
+URL_X86_64="https://github.com/ShawnRn/LiquidConvert/releases/download/v$VERSION/LiquidConvert_${VERSION}_x86_64.dmg"
 
 REMOTE_ARM64="$REMOTE_VERIFY_DIR/LiquidConvert_${VERSION}_arm64.dmg"
+REMOTE_X86_64="$REMOTE_VERIFY_DIR/LiquidConvert_${VERSION}_x86_64.dmg"
 
 echo "正在校验 GitHub Release 上实际可下载的资产..."
-if curl -L --fail --retry 5 --retry-delay 2 --retry-all-errors -o "$REMOTE_ARM64" "$URL_ARM64"; then
+if curl -L --fail --retry 3 --retry-delay 1 --retry-all-errors -o "$REMOTE_ARM64" "$URL_ARM64" 2>/dev/null; then
     LOCAL_SHA_ARM64=$(shasum -a 256 "$DMG_ARM64" | awk '{print $1}')
     REMOTE_SHA_ARM64=$(shasum -a 256 "$REMOTE_ARM64" | awk '{print $1}')
-
     if [ "$LOCAL_SHA_ARM64" != "$REMOTE_SHA_ARM64" ]; then
-        echo "警告: GitHub Release 实际下载到的资产与本地 DMG 不一致。"
-        echo "arm64 local:  $LOCAL_SHA_ARM64"
-        echo "arm64 remote: $REMOTE_SHA_ARM64"
+        echo "警告: GitHub Release arm64 下载资产与本地不一致。"
     fi
 else
-    echo "警告: 无法下载 GitHub Release 资产。"
+    echo "警告: 无法从 GitHub 预下载 arm64 资产。"
 fi
-# 始终以本地最新构建的 DMG 资产为准生成 appcast 签名
-SIGN_SOURCE_ARM64="$DMG_ARM64"
 
+if curl -L --fail --retry 3 --retry-delay 1 --retry-all-errors -o "$REMOTE_X86_64" "$URL_X86_64" 2>/dev/null; then
+    LOCAL_SHA_X86_64=$(shasum -a 256 "$DMG_X86_64" | awk '{print $1}')
+    REMOTE_SHA_X86_64=$(shasum -a 256 "$REMOTE_X86_64" | awk '{print $1}')
+    if [ "$LOCAL_SHA_X86_64" != "$REMOTE_SHA_X86_64" ]; then
+        echo "警告: GitHub Release x86_64 下载资产与本地不一致。"
+    fi
+else
+    echo "警告: 无法从 GitHub 预下载 x86_64 资产。"
+fi
+
+# 4. 生成签名与获取大⼩
 echo "正在生成 EdDSA 签名..."
 sign_update_file() {
     local source_file="$1"
@@ -123,27 +136,24 @@ sign_update_file() {
     printf '%s' "$signature"
 }
 
-if [ -n "${SPARKLE_PRIVATE_KEY:-}" ]; then
-    SIG_ARM64=$(sign_update_file "$SIGN_SOURCE_ARM64")
-else
-    SIG_ARM64=$(sign_update_file "$SIGN_SOURCE_ARM64")
-fi
+SIG_ARM64=$(sign_update_file "$DMG_ARM64")
+SIG_X86_64=$(sign_update_file "$DMG_X86_64")
 
-if [ -z "$SIG_ARM64" ]; then
-    echo "错误: 签名生成失败，请确保 Sparkle 私钥已配置。"
+if [ -z "$SIG_ARM64" ] || [ -z "$SIG_X86_64" ]; then
+    echo "错误: 双架构签名生成失败，请确保 Sparkle 私钥已配置。"
     exit 1
 fi
 
-SIZE_ARM64=$(stat -f%z "$SIGN_SOURCE_ARM64")
+SIZE_ARM64=$(stat -f%z "$DMG_ARM64")
+SIZE_X86_64=$(stat -f%z "$DMG_X86_64")
 
 echo "arm64 签名: $SIG_ARM64, 大小: $SIZE_ARM64"
+echo "x86_64 签名: $SIG_X86_64, 大小: $SIZE_X86_64"
 echo "发布日期: $PUB_DATE"
 
-
-# 5. 更新 appcast.xml
+# 5. 更新 appcast.xml (包含双 enclosure)
 echo "正在更新 appcast.xml..."
 
-# 生成新的 ITEM XML (单 enclosure)
 ITEM_XML="        <item>
             <title>$VERSION</title>
             <pubDate>$PUB_DATE</pubDate>
@@ -151,9 +161,9 @@ ITEM_XML="        <item>
             <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url=\"$URL_ARM64\" length=\"$SIZE_ARM64\" type=\"application/octet-stream\" sparkle:os=\"macos\" sparkle:nativeArchitecture=\"arm64\" sparkle:edSignature=\"$SIG_ARM64\"/>
+            <enclosure url=\"$URL_X86_64\" length=\"$SIZE_X86_64\" type=\"application/octet-stream\" sparkle:os=\"macos\" sparkle:nativeArchitecture=\"x86_64\" sparkle:edSignature=\"$SIG_X86_64\"/>
         </item>"
 
-# 重新构建 appcast，顺手修复历史上残留的结构问题，并保证同一 build 幂等
 python3 - "$APPCAST_FILE" "$SPARKLE_VERSION" "$VERSION" "$ITEM_XML" <<'PY'
 import re
 import sys
@@ -202,8 +212,7 @@ if command -v xmllint >/dev/null 2>&1; then
     echo "appcast.xml 校验通过"
 fi
 
-# 6. 完成提示
 echo "--- 准备完成！ ---"
 echo "appcast.xml 已更新。"
 echo "请执行:"
-echo "gh release create \"v\$VERSION\" \"$DMG_ARM64\" --title \"LiquidConvert \$VERSION\" --notes \"更新日志...\""
+echo "gh release create \"v$VERSION\" \"$DMG_ARM64\" \"$DMG_X86_64\" --title \"LiquidConvert $VERSION\" --notes \"更新日志...\""
