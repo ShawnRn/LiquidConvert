@@ -8,7 +8,7 @@
             <sparkle:version>2026072901</sparkle:version>
             <sparkle:shortVersionString>3.4.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.4.4/LiquidConvert_3.4.4_arm64.dmg" length="4090228" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="arm64" sparkle:edSignature="Mog6DirWYIYQldGMqovXLk1+1L0KIMhNL84Q+LtnVrLDVjmWUFzoleEp2xDr8bsJxF58/8rzS+r4rs+ouwikAQ=="/>
+            <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.4.4/LiquidConvert_3.4.4_arm64.dmg" length="4090273" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="arm64" sparkle:edSignature="po3cg14fP9H9ZeMzO9g4hhtmlYJPwVkBg4pXXGYzrq3iEUEW1xmuPYavSiUdKeQGfmGckQEq8ICOUkfvUkBVBQ=="/>
             <enclosure url="https://github.com/ShawnRn/LiquidConvert/releases/download/v3.4.4/LiquidConvert_3.4.4_x86_64.dmg" length="4175357" type="application/octet-stream" sparkle:os="macos" sparkle:nativeArchitecture="x86_64" sparkle:edSignature="cuVXpICTfAbZjp6uet0J2uFndYxzLmYUVpIV3/51ePWgmM0X3kV42JuQWB7KdHqxrETD4v1AMgHpP2UrzwIbBA=="/>
         </item>
         <item>

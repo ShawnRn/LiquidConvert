@@ -137,14 +137,7 @@ sign_update_file() {
 }
 
 TARGET_ARM64="$DMG_ARM64"
-if [ -f "$REMOTE_ARM64" ]; then
-    TARGET_ARM64="$REMOTE_ARM64"
-fi
-
 TARGET_X86_64="$DMG_X86_64"
-if [ -f "$REMOTE_X86_64" ]; then
-    TARGET_X86_64="$REMOTE_X86_64"
-fi
 
 SIG_ARM64=$(sign_update_file "$TARGET_ARM64")
 SIG_X86_64=$(sign_update_file "$TARGET_X86_64")
