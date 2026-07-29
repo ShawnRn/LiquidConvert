@@ -582,15 +582,15 @@ final class ImageUploader {
         let width = cgImage.width
         let height = cgImage.height
         
-        // 等比例缩放：超过 1280px 的维度才缩放，不足的保持原尺寸
-        let maxAllowedDimension: CGFloat = 1280.0
-        let needsResize = max(CGFloat(width), CGFloat(height)) > maxAllowedDimension
+        // 限制最大展示宽度在 1280px 以内（按宽度等比例缩放），避免长图高度大导致宽度被过度压缩变模糊
+        let maxAllowedWidth: CGFloat = 1280.0
+        let needsResize = CGFloat(width) > maxAllowedWidth
         
         let targetWidth: Int
         let targetHeight: Int
         if needsResize {
-            let scale = maxAllowedDimension / max(CGFloat(width), CGFloat(height))
-            targetWidth = Int(CGFloat(width) * scale)
+            let scale = maxAllowedWidth / CGFloat(width)
+            targetWidth = Int(maxAllowedWidth)
             targetHeight = Int(CGFloat(height) * scale)
         } else {
             targetWidth = width
@@ -669,16 +669,16 @@ final class ImageUploader {
         let width = cgImage.width
         let height = cgImage.height
 
-        // 限制最大展示维度在 1280px 以内（等比例缩放），以极大减小 PNG 编码体积，彻底消除超限压缩死循环及卡顿
-        let maxAllowedDimension: CGFloat = 1280.0
+        // 限制最大展示宽度在 1280px 以内（按宽度等比例缩放），避免长图因高度较大导致宽度被过度压缩变模糊
+        let maxAllowedWidth: CGFloat = 1280.0
         var targetWidth = CGFloat(width)
         var targetHeight = CGFloat(height)
         
-        if max(targetWidth, targetHeight) > maxAllowedDimension {
-            let scale = maxAllowedDimension / max(targetWidth, targetHeight)
-            targetWidth = targetWidth * scale
+        if targetWidth > maxAllowedWidth {
+            let scale = maxAllowedWidth / targetWidth
+            targetWidth = maxAllowedWidth
             targetHeight = targetHeight * scale
-            print("[ImageUploader] 📏 图片分辨率过大，等比例缩放: \(width)x\(height) -> \(Int(targetWidth))x\(Int(targetHeight))")
+            print("[ImageUploader] 📏 图片宽度超过 1280px，按宽度等比例缩放: \(width)x\(height) -> \(Int(targetWidth))x\(Int(targetHeight))")
         }
 
         let roundedWidth = Int(targetWidth)

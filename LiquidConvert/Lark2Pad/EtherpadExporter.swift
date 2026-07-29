@@ -387,9 +387,6 @@ enum EtherpadExporter {
     <section style="text-align: center;line-height: 0;box-sizing: border-box;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;" nodeleaf=""><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCO5sTlJseFUfia8Hu5P9EWwc4YHFvbFXrYWWDVxISzy2Vl3HGU4ibnqLPR6U8BgFRGxhS86OwDH6OCMnIDr4UnyEhYy6dTib2qiaBA/640?wx_fmt=png" class="rich_pages wxw-img" data-ratio="0.05804" data-s="300,640" data-w="1051" style="vertical-align:middle;max-width:100%;width:100%;box-sizing:border-box;" width="100%"></section></section>
     <p style="white-space: normal;margin: 0px;padding: 0px;box-sizing: border-box;"></p>
     <section style="text-align: left;justify-content: flex-start;display: flex;flex-flow: row;box-sizing: border-box;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;background-repeat: repeat;background-attachment: scroll;border-radius: 10px;overflow: hidden;background-image: url(&quot;https://mmbiz.qpic.cn/mmbiz_png/fc90sFPPBCMRTjiay36FKj1KwiaibBpEPbK583nGuBnJjNNeR13rq3IA6sia1fzibcJKicGLZcIfTOVU00ATFq7mmDMSKd18TqTmZzT7EmGykuQbk/640?wx_fmt=png&quot;);box-sizing: border-box;background-position: 0% 0% !important;background-size: auto !important;"><section style="justify-content: flex-start;display: flex;flex-flow: row;margin: 50px 0px 0px;box-sizing: border-box;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;box-sizing: border-box;"><section style="text-align: center;line-height: 0;box-sizing: border-box;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;" nodeleaf=""><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCP8MG80wljJC4cT2s8YibQ2t5hoaVEAoIZ8ftGmllAI5ehMD28ExTwBdfsibfyOqZBmTyjhrdXklbqcCa3CeMiaAXdeyzjKY11lIE/640?wx_fmt=png" class="rich_pages wxw-img" data-ratio="0.6003805899143673" data-s="300,640" data-w="1051" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></section></section></section></section><section style="justify-content: flex-start;display: flex;flex-flow: row;box-sizing: border-box;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;box-sizing: border-box;"><section style="text-align: center;line-height: 0;box-sizing: border-box;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;"><a href="https://mp.weixin.qq.com/s?__biz=MjgzMTAwODI0MA==&amp;mid=2652396877&amp;idx=2&amp;sn=dfef25453a6bf0dca147b0adca3deaf7&amp;scene=21#wechat_redirect" target="_blank"><span style="width:100%" class="js_jump_icon h5_image_link"><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCPyDFWbJT8y9ibibmFbtvMJbwHxCAZQskte81K91q7QwkwXPevnDR7bvHUD9ntPN43bDibM6svwxrCkBaVruzvjKVBLnTwJYk5pOk/640?wx_fmt=png" class="rich_pages wxw-img" data-ratio="0.14367269267364416" data-s="300,640" data-w="1051" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></span></a></section></section><section style="text-align: justify;box-sizing: border-box;"><p style="white-space: normal;margin: 0px;padding: 0px;box-sizing: border-box;"></p></section></section></section></section></section>
-    <p style="white-space: normal;margin: 0px;padding: 0px;box-sizing: border-box;"></p>
-    <section style="text-align: center;line-height: 0;box-sizing: border-box;margin-top: 16px;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;" nodeleaf=""><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCO5sTlJseFUfia8Hu5P9EWwc4YHFvbFXrYWWDVxISzy2Vl3HGU4ibnqLPR6U8BgFRGxhS86OwDH6OCMnIDr4UnyEhYy6dTib2qiaBA/640?wx_fmt=png" class="rich_pages wxw-img" data-ratio="0.05804" data-s="300,640" data-w="1051" style="vertical-align:middle;max-width:100%;width:100%;box-sizing:border-box;" width="100%"></section></section>
-    <p style="white-space: normal;margin: 0px;padding: 0px;box-sizing: border-box;"></p>
     <section style="text-align: center;line-height: 0;box-sizing: border-box;margin-top: 16px;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;border-radius: 10px;overflow: hidden;box-sizing: border-box;" nodeleaf=""><img src="https://mmbiz.qpic.cn/mmbiz_png/fc90sFPPBCNnChuCqY5TK78KORbHN3ficOaIgpjRfNqQWMJqRxxNGpMb2Om3ebIfpJGIs7nfu2WrCYzYjLkH6qicYms1ibfJbFujmoNFYaavpw/640?wx_fmt=png" class="rich_pages wxw-img" data-ratio="1.3333333333333333" data-s="300,640" data-w="1080" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></section></section>
     """
 
@@ -422,6 +419,69 @@ enum EtherpadExporter {
         return false
     }
 
+    private static func extractImageURL(from line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let mdPattern = "^!\\[[^\\]]*\\]\\(([^)]+)\\)$"
+        if let regex = try? NSRegularExpression(pattern: mdPattern, options: []),
+           let match = regex.firstMatch(in: trimmed, options: [], range: NSRange(location: 0, length: (trimmed as NSString).length)),
+           match.numberOfRanges > 1 {
+            return (trimmed as NSString).substring(with: match.range(at: 1))
+        }
+        if trimmed.lowercased().contains("<img"),
+           let src = firstAttribute("src", in: trimmed) {
+            return src
+        }
+        return nil
+    }
+
+    private static func buildHorizontalSliderHTML(imageURLs: [String]) -> String {
+        let count = imageURLs.count
+        guard count > 0 else { return "" }
+        let itemWidthPercent = String(format: "%.4f", 100.0 / Double(count)) + "%"
+        var itemsHTML = ""
+        for url in imageURLs {
+            itemsHTML += "<section style=\"display: inline-block; width: \(itemWidthPercent); min-width: \(itemWidthPercent); max-width: \(itemWidthPercent);\"><img src=\"\(htmlEscaped(url))\" style=\"min-width: 100%; max-width: 100%; padding-right: 5px;\"></section>"
+        }
+        return """
+        <section style="margin-bottom: 32px; padding: 0 14px; box-sizing: border-box; font-size: 0px;" data-type="custom-block">
+        <section class="overflow-scrolling" style="min-width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+        <section style="min-width: \(count * 100)%; max-width: \(count * 100)%;">
+        \(itemsHTML)
+        </section>
+        </section>
+        <section style="margin: 6px 0px; font-size: 12px; line-height: 17px; color: rgb(167, 167, 167);">向左滑动查看更多内容</section>
+        <img src="https://wxlayout.ifanrusercontent.com/yd2qr5ofbspk7y3smytx3514yidjgoc2.gif" style="width: 42px; max-height: 10px;">
+        </section>
+        """
+    }
+
+    private static func buildVerticalSliderHTML(imageURLs: [String]) -> String {
+        guard !imageURLs.isEmpty else { return "" }
+        var imgsHTML = ""
+        for url in imageURLs {
+            imgsHTML += "<img src=\"\(htmlEscaped(url))\" style=\"display: block; width: 100%;\">\n"
+        }
+        return """
+        <section style="margin: 26px 0; padding: 0 14px; box-sizing: border-box;" data-type="custom-block">
+        <section style="width: 100%; height: 300px; overflow: hidden;">
+        <section style="display: flex; flex-direction: column; height: 100%; overflow-y: auto;">
+        \(imgsHTML)</section>
+        </section>
+        <section style="margin: 6px 0px; font-size: 12px; line-height: 17px; color: rgb(167, 167, 167); text-align: center;">上下滑动查看更多内容</section>
+        </section>
+        """
+    }
+
+    private struct SliderBlock {
+        enum Kind {
+            case horizontal
+            case vertical
+        }
+        let endIndex: Int
+        let kind: Kind
+        let urls: [String]
+    }
+
     private static func markdownToWeChatHTML(
         _ markdown: String,
         roundImages: Bool,
@@ -441,12 +501,94 @@ enum EtherpadExporter {
         }
 
         // Pad Exact Spec:
-        // Paragraph: <section style="margin: 26px 0; padding: 0 14px; font-size: 15px; color: #222222; text-align: justify; line-height: 27px; word-break: break-all; word-wrap: break-word; font-family: &quot;PingFangSC-Light&quot;;">...</section>
         let pStyle = "margin: 26px 0; padding: 0 14px; font-size: 15px; color: #222222; text-align: justify; line-height: 27px; word-break: break-all; word-wrap: break-word; font-family: &quot;PingFangSC-Light&quot;;"
 
-        var inWeChatList = false
+        // Pre-scan for slider blocks (bidirectional image collection)
+        var sliderBlocks: [Int: SliderBlock] = [:]
+        var processedIndices = Set<Int>()
 
-        for index in 0..<lines.count {
+        for i in 0..<lines.count {
+            if processedIndices.contains(i) { continue }
+            let trimmed = lines[i].trimmingCharacters(in: .whitespaces)
+            let stripped = trimmed
+                .replacingOccurrences(of: "*", with: "")
+                .replacingOccurrences(of: ">", with: "")
+                .replacingOccurrences(of: "#", with: "")
+                .trimmingCharacters(in: .whitespaces)
+
+            let isHoriz = stripped.contains("左右滑动")
+            let isVert = stripped.contains("上下滑动")
+
+            if isHoriz || isVert {
+                var startIdx = i
+                var endIdx = i
+                var urls: [String] = []
+
+                // Look backwards
+                var prevIdx = i - 1
+                var backURLs: [String] = []
+                while prevIdx >= 0 {
+                    let candidateTrimmed = lines[prevIdx].trimmingCharacters(in: .whitespaces)
+                    if candidateTrimmed.isEmpty {
+                        prevIdx -= 1
+                        continue
+                    }
+                    if let u = extractImageURL(from: lines[prevIdx]) {
+                        backURLs.insert(u, at: 0)
+                        startIdx = prevIdx
+                        prevIdx -= 1
+                    } else {
+                        break
+                    }
+                }
+                urls.append(contentsOf: backURLs)
+
+                // Look forwards
+                var nextIdx = i + 1
+                while nextIdx < lines.count {
+                    let candidateTrimmed = lines[nextIdx].trimmingCharacters(in: .whitespaces)
+                    if candidateTrimmed.isEmpty {
+                        nextIdx += 1
+                        continue
+                    }
+                    if let u = extractImageURL(from: lines[nextIdx]) {
+                        urls.append(u)
+                        endIdx = nextIdx
+                        nextIdx += 1
+                    } else {
+                        break
+                    }
+                }
+
+                if !urls.isEmpty {
+                    let kind: SliderBlock.Kind = isHoriz ? .horizontal : .vertical
+                    sliderBlocks[startIdx] = SliderBlock(endIndex: endIdx, kind: kind, urls: urls)
+                    for k in startIdx...endIdx {
+                        processedIndices.insert(k)
+                    }
+                }
+            }
+        }
+
+        var inWeChatList = false
+        var index = 0
+
+        while index < lines.count {
+            if let block = sliderBlocks[index] {
+                if inWeChatList {
+                    result += "</section>\n"
+                    inWeChatList = false
+                }
+                switch block.kind {
+                case .horizontal:
+                    result += buildHorizontalSliderHTML(imageURLs: block.urls) + "\n"
+                case .vertical:
+                    result += buildVerticalSliderHTML(imageURLs: block.urls) + "\n"
+                }
+                index = block.endIndex + 1
+                continue
+            }
+
             let line = lines[index]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
 
@@ -456,6 +598,7 @@ enum EtherpadExporter {
                     result += "</section>\n"
                     inWeChatList = false
                 }
+                index += 1
                 continue
             }
 
@@ -474,6 +617,7 @@ enum EtherpadExporter {
                 let itemStyle = "display: flex; margin-bottom: 8px; font-family: &quot;PingFangSC-Light&quot;; font-size: 15px; color: #363636; letter-spacing: 0; text-align: justify; line-height: 27px;"
                 let dotStyle = "margin-top: 10px; margin-right: 12px; width: 6px; height: 6px; background: #363636;"
                 result += "<section style=\"\(itemStyle)\"><section style=\"\(dotStyle)\"></section><section style=\"flex: 1;\">\(content)</section></section>\n"
+                index += 1
                 continue
             } else if inWeChatList {
                 result += "</section>\n"
@@ -484,6 +628,7 @@ enum EtherpadExporter {
             let hasCaption = hasNextCaptionLine(from: index, in: lines)
             if let imageSection = parseStandaloneImage(trimmed, imgRadius: imgRadius, hasCaption: hasCaption) {
                 result += imageSection + "\n"
+                index += 1
                 continue
             }
 
@@ -493,6 +638,7 @@ enum EtherpadExporter {
                 let content = parseWeChatInline(caption, imgRadius: imgRadius)
                 let captionStyle = "display: inline-block; width: 100%; font-family: &quot;PingFang SC&quot;, system-ui, -apple-system, BlinkMacSystemFont, &quot;Helvetica Neue&quot;, Helvetica, Tahoma, Arial, &quot;Heiti SC&quot;, STHeiti, SimHei, sans-serif; font-weight: 400; font-size: 12px; color: rgb(167, 167, 167); letter-spacing: 0px; text-align: left; margin-left: 16px; margin-right: 16px; margin-bottom: 24px;"
                 result += "<section style=\"\(captionStyle)\" data-type=\"custom-block\">\(content)</section>\n"
+                index += 1
                 continue
             }
 
@@ -520,6 +666,7 @@ enum EtherpadExporter {
                 let inlineContent = parseWeChatInline(content, imgRadius: imgRadius)
                 let hStyle = "font-family: &quot;PingFangSC-Semibold&quot;; font-weight: 600; color: #FD4606; text-align: justify; line-height: \(lineHeight); margin: \(margin); padding: 0 14px; font-size: \(fontSize);"
                 result += "<h3 style=\"\(hStyle)\">\(inlineContent)</h3>\n"
+                index += 1
                 continue
             }
 
@@ -533,6 +680,7 @@ enum EtherpadExporter {
                 } else {
                     result += trimmed + "\n"
                 }
+                index += 1
                 continue
             }
 
@@ -541,16 +689,19 @@ enum EtherpadExporter {
                 let content = parseWeChatInline(String(trimmed.dropFirst(2)), imgRadius: imgRadius)
                 let bqStyle = "padding: 0 15px; border-left: 4px solid #D8D8D8; padding-left: 14px; font-family: &quot;PingFangSC-Light&quot;, sans-serif; font-weight: 600; font-size: 15px; color: #222222; text-align: justify; line-height: 27px; margin: 26px 0;"
                 result += "<section style=\"\(bqStyle)\">\(content)</section>\n"
+                index += 1
                 continue
             }
 
             if trimmed == ">" {
+                index += 1
                 continue
             }
 
             // Paragraphs
             let content = parseWeChatInline(line, imgRadius: imgRadius)
             result += "<section style=\"\(pStyle)\">\(content)</section>\n"
+            index += 1
         }
 
         if inWeChatList {

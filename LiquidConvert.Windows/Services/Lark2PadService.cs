@@ -282,7 +282,6 @@ public sealed partial class Lark2PadService
     private const string WeChatFooterBannerHtml = """
     <section style="text-align: center;line-height: 0;box-sizing: border-box;margin-top: 26px;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;"><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCO5sTlJseFUfia8Hu5P9EWwc4YHFvbFXrYWWDVxISzy2Vl3HGU4ibnqLPR6U8BgFRGxhS86OwDH6OCMnIDr4UnyEhYy6dTib2qiaBA/640?wx_fmt=png" class="rich_pages wxw-img" style="vertical-align:middle;max-width:100%;width:100%;box-sizing:border-box;" width="100%"></section></section>
     <section style="text-align: left;justify-content: flex-start;display: flex;flex-flow: row;box-sizing: border-box;margin-top: 16px;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;background-repeat: repeat;background-attachment: scroll;border-radius: 10px;overflow: hidden;background-image: url(&quot;https://mmbiz.qpic.cn/mmbiz_png/fc90sFPPBCMRTjiay36FKj1KwiaibBpEPbK583nGuBnJjNNeR13rq3IA6sia1fzibcJKicGLZcIfTOVU00ATFq7mmDMSKd18TqTmZzT7EmGykuQbk/640?wx_fmt=png&quot;);box-sizing: border-box;background-position: 0% 0% !important;background-size: auto !important;"><section style="justify-content: flex-start;display: flex;flex-flow: row;margin: 50px 0px 0px;box-sizing: border-box;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;box-sizing: border-box;"><section style="text-align: center;line-height: 0;box-sizing: border-box;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;"><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCP8MG80wljJC4cT2s8YibQ2t5hoaVEAoIZ8ftGmllAI5ehMD28ExTwBdfsibfyOqZBmTyjhrdXklbqcCa3CeMiaAXdeyzjKY11lIE/640?wx_fmt=png" class="rich_pages wxw-img" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></section></section></section></section><section style="justify-content: flex-start;display: flex;flex-flow: row;box-sizing: border-box;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;box-sizing: border-box;"><section style="text-align: center;line-height: 0;box-sizing: border-box;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;"><a href="https://mp.weixin.qq.com/s?__biz=MjgzMTAwODI0MA==&amp;mid=2652396877&amp;idx=2&amp;sn=dfef25453a6bf0dca147b0adca3deaf7&amp;scene=21#wechat_redirect" target="_blank"><span style="width:100%" class="js_jump_icon h5_image_link"><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCPyDFWbJT8y9ibibmFbtvMJbwHxCAZQskte81K91q7QwkwXPevnDR7bvHUD9ntPN43bDibM6svwxrCkBaVruzvjKVBLnTwJYk5pOk/640?wx_fmt=png" class="rich_pages wxw-img" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></span></a></section></section></section></section></section></section>
-    <section style="text-align: center;line-height: 0;box-sizing: border-box;margin-top: 16px;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;"><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCO5sTlJseFUfia8Hu5P9EWwc4YHFvbFXrYWWDVxISzy2Vl3HGU4ibnqLPR6U8BgFRGxhS86OwDH6OCMnIDr4UnyEhYy6dTib2qiaBA/640?wx_fmt=png" class="rich_pages wxw-img" style="vertical-align:middle;max-width:100%;width:100%;box-sizing:border-box;" width="100%"></section></section>
     <section style="text-align: center;line-height: 0;box-sizing: border-box;margin-top: 16px;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;border-radius: 10px;overflow: hidden;box-sizing: border-box;"><img src="https://mmbiz.qpic.cn/mmbiz_png/fc90sFPPBCNnChuCqY5TK78KORbHN3ficOaIgpjRfNqQWMJqRxxNGpMb2Om3ebIfpJGIs7nfu2WrCYzYjLkH6qicYms1ibfJbFujmoNFYaavpw/640?wx_fmt=png" class="rich_pages wxw-img" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></section></section>
     """;
 
@@ -321,6 +320,62 @@ public sealed partial class Lark2PadService
         return false;
     }
 
+    private static string? ExtractImageUrl(string line)
+    {
+        var trimmed = line.Trim();
+        var mdMatch = Regex.Match(trimmed, @"^!\[(?<alt>[^\]]*)\]\((?<url>[^)]+)\)$");
+        if (mdMatch.Success) return mdMatch.Groups["url"].Value;
+        if (trimmed.Contains("<img", StringComparison.OrdinalIgnoreCase))
+        {
+            var srcMatch = Regex.Match(trimmed, @"\bsrc=(['""])(?<url>.*?)\1", RegexOptions.IgnoreCase);
+            if (srcMatch.Success) return srcMatch.Groups["url"].Value;
+        }
+        return null;
+    }
+
+    private static string BuildHorizontalSliderHtml(List<string> imageUrls)
+    {
+        if (imageUrls.Count == 0) return string.Empty;
+        var itemWidthPercent = (100.0 / imageUrls.Count).ToString("0.0000") + "%";
+        var itemsBuilder = new StringBuilder();
+        foreach (var url in imageUrls)
+        {
+            itemsBuilder.Append($"<section style=\"display: inline-block; width: {itemWidthPercent}; min-width: {itemWidthPercent}; max-width: {itemWidthPercent};\"><img src=\"{WebUtility.HtmlEncode(url)}\" style=\"min-width: 100%; max-width: 100%; padding-right: 5px;\"></section>");
+        }
+        return $"""
+        <section style="margin-bottom: 32px; padding: 0 14px; box-sizing: border-box; font-size: 0px;" data-type="custom-block">
+        <section class="overflow-scrolling" style="min-width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+        <section style="min-width: {imageUrls.Count * 100}%; max-width: {imageUrls.Count * 100}%;">
+        {itemsBuilder}
+        </section>
+        </section>
+        <section style="margin: 6px 0px; font-size: 12px; line-height: 17px; color: rgb(167, 167, 167);">向左滑动查看更多内容</section>
+        <img src="https://wxlayout.ifanrusercontent.com/yd2qr5ofbspk7y3smytx3514yidjgoc2.gif" style="width: 42px; max-height: 10px;">
+        </section>
+        """;
+    }
+
+    private static string BuildVerticalSliderHtml(List<string> imageUrls)
+    {
+        if (imageUrls.Count == 0) return string.Empty;
+        var imgsBuilder = new StringBuilder();
+        foreach (var url in imageUrls)
+        {
+            imgsBuilder.AppendLine($"<img src=\"{WebUtility.HtmlEncode(url)}\" style=\"display: block; width: 100%;\">");
+        }
+        return $"""
+        <section style="margin: 26px 0; padding: 0 14px; box-sizing: border-box;" data-type="custom-block">
+        <section style="width: 100%; height: 300px; overflow: hidden;">
+        <section style="display: flex; flex-direction: column; height: 100%; overflow-y: auto;">
+        {imgsBuilder}</section>
+        </section>
+        <section style="margin: 6px 0px; font-size: 12px; line-height: 17px; color: rgb(167, 167, 167); text-align: center;">上下滑动查看更多内容</section>
+        </section>
+        """;
+    }
+
+    private record SliderBlockInfo(int EndIndex, bool IsHorizontal, List<string> Urls);
+
     public static string BuildWeChatHtml(string markdown, bool roundImages = true, bool addHeaderBanner = false, bool addFooterBanner = false)
     {
         var imgRadius = roundImages ? "8px" : "0";
@@ -334,8 +389,97 @@ public sealed partial class Lark2PadService
         }
 
         var lines = NormalizeMarkdown(markdown).Split('\n');
-        for (int index = 0; index < lines.Length; index++)
+        var sliderBlocks = new Dictionary<int, SliderBlockInfo>();
+        var processedIndices = new HashSet<int>();
+
+        for (int i = 0; i < lines.Length; i++)
         {
+            if (processedIndices.Contains(i)) continue;
+            var trimmedLine = lines[i].Trim();
+            var stripped = trimmedLine.Replace("*", "").Replace(">", "").Replace("#", "").Trim();
+            var isHoriz = stripped.Contains("左右滑动");
+            var isVert = stripped.Contains("上下滑动");
+
+            if (isHoriz || isVert)
+            {
+                int startIdx = i;
+                int endIdx = i;
+                var urls = new List<string>();
+
+                // Look backwards
+                int prevIdx = i - 1;
+                var backUrls = new List<string>();
+                while (prevIdx >= 0)
+                {
+                    var cTrimmed = lines[prevIdx].Trim();
+                    if (string.IsNullOrEmpty(cTrimmed))
+                    {
+                        prevIdx--;
+                        continue;
+                    }
+                    var u = ExtractImageUrl(lines[prevIdx]);
+                    if (u != null)
+                    {
+                        backUrls.Insert(0, u);
+                        startIdx = prevIdx;
+                        prevIdx--;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                urls.AddRange(backUrls);
+
+                // Look forwards
+                int nextIdx = i + 1;
+                while (nextIdx < lines.Length)
+                {
+                    var cTrimmed = lines[nextIdx].Trim();
+                    if (string.IsNullOrEmpty(cTrimmed))
+                    {
+                        nextIdx++;
+                        continue;
+                    }
+                    var u = ExtractImageUrl(lines[nextIdx]);
+                    if (u != null)
+                    {
+                        urls.Add(u);
+                        endIdx = nextIdx;
+                        nextIdx++;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                if (urls.Count > 0)
+                {
+                    sliderBlocks[startIdx] = new SliderBlockInfo(endIdx, isHoriz, urls);
+                    for (int k = startIdx; k <= endIdx; k++)
+                    {
+                        processedIndices.Add(k);
+                    }
+                }
+            }
+        }
+
+        int index = 0;
+        while (index < lines.Length)
+        {
+            if (sliderBlocks.TryGetValue(index, out var block))
+            {
+                if (inWeChatList)
+                {
+                    builder.AppendLine("</section>");
+                    inWeChatList = false;
+                }
+                builder.AppendLine(block.IsHorizontal ? BuildHorizontalSliderHtml(block.Urls) : BuildVerticalSliderHtml(block.Urls));
+                index = block.EndIndex + 1;
+                continue;
+            }
+
             var line = lines[index];
             var trimmed = line.Trim();
             if (string.IsNullOrEmpty(trimmed))
@@ -345,6 +489,7 @@ public sealed partial class Lark2PadService
                     builder.AppendLine("</section>");
                     inWeChatList = false;
                 }
+                index++;
                 continue;
             }
 
@@ -360,6 +505,7 @@ public sealed partial class Lark2PadService
                 var itemStyle = "display: flex; margin-bottom: 8px; font-family: &quot;PingFangSC-Light&quot;; font-size: 15px; color: #363636; letter-spacing: 0; text-align: justify; line-height: 27px;";
                 var dotStyle = "margin-top: 10px; margin-right: 12px; width: 6px; height: 6px; background: #363636;";
                 builder.AppendLine($"<section style=\"{itemStyle}\"><section style=\"{dotStyle}\"></section><section style=\"flex: 1;\">{InlineWeChatHtml(rawText, imgRadius)}</section></section>");
+                index++;
                 continue;
             }
             else if (inWeChatList)
@@ -377,6 +523,7 @@ public sealed partial class Lark2PadService
                 var imageWrapperStyle = $"padding: 0 14px; {marginStyle} text-align: center; box-sizing: border-box;";
                 var imgStyle = $"width: 100%; max-width: 100%; height: auto; display: block; margin: 0 auto; border-radius: {imgRadius};";
                 builder.AppendLine($"<section style=\"{imageWrapperStyle}\" data-type=\"custom-block\"><img alt=\"{alt}\" src=\"{url}\" style=\"{imgStyle}\"></section>");
+                index++;
                 continue;
             }
 
@@ -385,6 +532,7 @@ public sealed partial class Lark2PadService
                 var caption = NormalizeCaptionText(trimmed);
                 var captionStyle = "display: inline-block; width: 100%; font-family: &quot;PingFang SC&quot;, system-ui, -apple-system, BlinkMacSystemFont, &quot;Helvetica Neue&quot;, Helvetica, Tahoma, Arial, &quot;Heiti SC&quot;, STHeiti, SimHei, sans-serif; font-weight: 400; font-size: 12px; color: rgb(167, 167, 167); letter-spacing: 0px; text-align: left; margin-left: 16px; margin-right: 16px; margin-bottom: 24px;";
                 builder.AppendLine($"<section style=\"{captionStyle}\" data-type=\"custom-block\">{InlineWeChatHtml(caption, imgRadius)}</section>");
+                index++;
                 continue;
             }
 
@@ -433,6 +581,7 @@ public sealed partial class Lark2PadService
             {
                 builder.AppendLine($"<section style=\"{pStyle}\">{InlineWeChatHtml(line, imgRadius)}</section>");
             }
+            index++;
         }
 
         if (inWeChatList)
