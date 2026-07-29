@@ -392,6 +392,7 @@ enum EtherpadExporter {
 
         var result = ""
         var i = 0
+        var lastImageSrc: String? = nil
 
         while i < rawLines.count {
             let line = rawLines[i]
@@ -399,6 +400,15 @@ enum EtherpadExporter {
 
             let imgHTML = sanitizedImageTag(from: line) ?? parseStandaloneImageTag(line)
             if let imgHTML {
+                let currentSrc = firstAttribute("src", in: imgHTML)?.components(separatedBy: "?").first
+                if let currentSrc, currentSrc == lastImageSrc {
+                    i += 1
+                    continue
+                }
+                if let currentSrc {
+                    lastImageSrc = currentSrc
+                }
+
                 result += imgHTML
 
                 // Look ahead for caption, bypassing intermediate empty lines
@@ -429,6 +439,10 @@ enum EtherpadExporter {
                 result += "<span class=\"image-caption\" data-image-caption=\"true\" style=\"\(captionStyle)\">\(htmlEscaped(caption))</span><br>\n"
                 i += 1
                 continue
+            }
+
+            if !trimmed.isEmpty {
+                lastImageSrc = nil
             }
 
             result += htmlEscaped(line) + "<br>\n"
