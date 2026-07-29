@@ -95,6 +95,49 @@ function loadHtmlAndGetImages(htmlStr) {
         }
     });
 
+    // 过滤与防重：去除隐藏/无效 img 及容器内部重复 img 标签
+    const rawImages = Array.from(window.activeDoc.querySelectorAll('img'));
+    let seenSrcs = new Set();
+    rawImages.forEach(img => {
+        const style = (img.getAttribute('style') || '').toLowerCase();
+        if (style.includes('display: none') || style.includes('display:none') || style.includes('visibility: hidden') || style.includes('visibility:hidden')) {
+            img.remove();
+            return;
+        }
+        let src = img.getAttribute('src') || '';
+        if (!src || src.startsWith('data:image/svg+xml')) {
+            return;
+        }
+        let cleanSrc = src.split('?')[0];
+
+        // 检查父容器 (如 figure、div.image-wrapper 等) 内部多重 img 标签
+        let parent = img.closest('figure, div.image-block, div.image-wrapper, div.image-box, div.image-container');
+        if (parent) {
+            let siblingImgs = parent.querySelectorAll('img');
+            if (siblingImgs.length > 1) {
+                let firstImg = siblingImgs[0];
+                if (img !== firstImg) {
+                    img.remove();
+                    return;
+                }
+            }
+        }
+
+        // 检查非滑动卡片容器内紧邻的相同 src 图片重复
+        let isInsideSlider = img.closest('[class*="slider"], [data-type*="slider"]');
+        if (!isInsideSlider) {
+            let prev = img.previousElementSibling;
+            if (prev && prev.tagName && prev.tagName.toLowerCase() === 'img') {
+                let prevSrc = (prev.getAttribute('src') || '').split('?')[0];
+                if (prevSrc === cleanSrc) {
+                    img.remove();
+                    return;
+                }
+            }
+            seenSrcs.add(cleanSrc);
+        }
+    });
+
     const images = Array.from(window.activeDoc.querySelectorAll('img'));
     let urls = [];
     images.forEach((img, index) => {

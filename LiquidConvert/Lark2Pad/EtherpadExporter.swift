@@ -736,17 +736,26 @@ enum EtherpadExporter {
 
     private static func isCaptionText(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("图") else { return false }
-        let afterTu = trimmed.dropFirst().trimmingCharacters(in: .whitespaces)
-        guard let firstChar = afterTu.first else { return false }
-        return firstChar == "｜" || firstChar == "|" || firstChar == "：" || firstChar == ":"
+        if trimmed.hasPrefix("▲") || trimmed.hasPrefix("△") || trimmed.hasPrefix("▼") || trimmed.hasPrefix("▽") {
+            return true
+        }
+        if trimmed.hasPrefix("图") || trimmed.hasPrefix("注") {
+            let afterPrefix = trimmed.dropFirst().trimmingCharacters(in: .whitespaces)
+            if let firstChar = afterPrefix.first {
+                return firstChar == "｜" || firstChar == "|" || firstChar == "：" || firstChar == ":"
+            }
+        }
+        return false
     }
 
     private static func normalizeCaptionText(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard isCaptionText(trimmed) else { return text }
-        let afterTu = trimmed.dropFirst().trimmingCharacters(in: .whitespaces)
-        let content = afterTu.dropFirst().trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("▲") || trimmed.hasPrefix("△") || trimmed.hasPrefix("▼") || trimmed.hasPrefix("▽") {
+            return trimmed
+        }
+        let afterPrefix = trimmed.dropFirst().trimmingCharacters(in: .whitespaces)
+        let content = afterPrefix.dropFirst().trimmingCharacters(in: .whitespaces)
         return "图｜\(content)"
     }
 
