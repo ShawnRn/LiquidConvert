@@ -39,6 +39,23 @@ function initTurndown() {
         }
     });
 
+    // 针对飞书/Lark 高亮块 (Callout) 的定制规则
+    turndownService.addRule('feishuCallout', {
+        filter: function (node) {
+            if (!node) return false;
+            const tagName = node.tagName ? node.tagName.toLowerCase() : '';
+            if (tagName === 'callout') return true;
+            const className = (node.className || '').toString().toLowerCase();
+            const dataType = (node.getAttribute('data-type') || node.getAttribute('data-block-type') || '').toLowerCase();
+            if (className.includes('callout') || dataType === 'callout' || dataType === 'highlight') return true;
+            return false;
+        },
+        replacement: function (content, node) {
+            const cleanContent = content.trim();
+            return '\n\n<section data-type="callout">\n' + cleanContent + '\n</section>\n\n';
+        }
+    });
+
     // 针对列表项的定制规则，强制紧凑列表（移除多余空行）
     turndownService.addRule('listItems', {
         filter: 'li',

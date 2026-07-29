@@ -310,6 +310,13 @@ final class ConversionCoordinator: ObservableObject {
         previewHTML = EtherpadExporter.buildRenderedHTML(from: normalizedMarkdown)
         etherpadHTML = EtherpadExporter.buildRawHTML(from: normalizedMarkdown)
 
+        Lark2PadHistoryManager.shared.saveItem(
+            title: "",
+            markdown: normalizedMarkdown,
+            wechatHTML: previewHTML,
+            wordpressHTML: EtherpadExporter.buildWordPressHTML(from: normalizedMarkdown)
+        )
+
         statusMessage = "正在渲染预览…"
         phase = .rendering
 

@@ -22,6 +22,7 @@ struct Lark2PadFunctionView: View {
     @AppStorage("lark2pad_add_header_banner") private var addHeaderBanner = true
     @AppStorage("lark2pad_add_footer_banner") private var addFooterBanner = true
     @State private var showSettingsSheet = false
+    @State private var showHistorySheet = false
     @State private var isCopyingWeChat = false
     @Environment(\.colorScheme) private var colorScheme
     
@@ -70,6 +71,9 @@ struct Lark2PadFunctionView: View {
                 addHeaderBanner: $addHeaderBanner,
                 addFooterBanner: $addFooterBanner
             )
+        }
+        .sheet(isPresented: $showHistorySheet) {
+            Lark2PadHistorySheetView()
         }
         .sheet(isPresented: $showLoginSheet, onDismiss: {
             coordinator.checkLoginStatus()
@@ -182,6 +186,17 @@ struct Lark2PadFunctionView: View {
                         Label("排版与转换设置", systemImage: "slider.horizontal.3")
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+
+                    Text("•")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+
+                    Button(action: { showHistorySheet = true }) {
+                        Label("30天转换历史", systemImage: "clock.arrow.circlepath")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.blue)
                     }
                     .buttonStyle(.plain)
                 }
@@ -464,6 +479,10 @@ struct Lark2PadFunctionView: View {
             .controlSize(.large)
 
             Menu {
+                Button(action: copyToWordPress) {
+                    Label("复制到主站 (WordPress)", systemImage: "doc.on.clipboard")
+                }
+                Divider()
                 Button(action: syncToPad) {
                     Label("仅同步到 Pad", systemImage: "icloud.and.arrow.up")
                 }
@@ -476,7 +495,7 @@ struct Lark2PadFunctionView: View {
                     }
                 }
             } label: {
-                Label(isSyncingToPad ? "处理中..." : "同步 / 发布至公众号", systemImage: isSyncingToPad ? "arrow.triangle.2.circlepath" : "icloud.and.arrow.up")
+                Label(isSyncingToPad ? "处理中..." : "同步 / 发布至主站及公众号", systemImage: isSyncingToPad ? "arrow.triangle.2.circlepath" : "icloud.and.arrow.up")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -574,6 +593,7 @@ struct Lark2PadFunctionView: View {
                 coordinator.previewHTML = EtherpadExporter.buildRenderedHTML(from: text)
                 coordinator.etherpadHTML = EtherpadExporter.buildRawHTML(from: text)
                 coordinator.phase = .rendering
+                saveToHistory()
                 return
             }
             showToast("剪贴板中未找到飞书文档内容，请确认已全选并复制。", isError: true)
@@ -624,8 +644,33 @@ struct Lark2PadFunctionView: View {
                 pb.setString(markdown, forType: .string)
                 isCopyingWeChat = false
                 showToast("已复制公众号排版！如提示图片载入失败，可直接使用右侧【同步 / 发布至公众号】。")
+                saveToHistory(wechatHTML: wechatHTML)
             }
         }
+    }
+
+    private func copyToWordPress() {
+        let markdown = coordinator.markdownResult
+        guard !markdown.isEmpty else { return }
+        let wpHTML = EtherpadExporter.buildWordPressHTML(from: markdown)
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(wpHTML, forType: .string)
+        showToast("已复制主站 (WordPress) 格式！")
+        saveToHistory(wordpressHTML: wpHTML)
+    }
+
+    private func saveToHistory(wechatHTML: String = "", wordpressHTML: String = "") {
+        let markdown = coordinator.markdownResult
+        guard !markdown.isEmpty else { return }
+        let wp = wordpressHTML.isEmpty ? EtherpadExporter.buildWordPressHTML(from: markdown) : wordpressHTML
+        let wc = wechatHTML.isEmpty ? coordinator.previewHTML : wechatHTML
+        Lark2PadHistoryManager.shared.saveItem(
+            title: "",
+            markdown: markdown,
+            wechatHTML: wc,
+            wordpressHTML: wp
+        )
     }
 
     private func syncToPad() {

@@ -87,6 +87,40 @@ struct ConversionSettingsSheet: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
+
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("当前存储路径")
+                            .font(.subheadline.weight(.medium))
+                        Text(Lark2PadHistoryManager.shared.currentFolderURL.path)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+
+                        HStack(spacing: 12) {
+                            Button("选择 iCloud / 本地文件夹...") {
+                                Lark2PadHistoryManager.shared.selectFolder()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+
+                            if !Lark2PadHistoryManager.shared.customFolderPath.isEmpty {
+                                Button("恢复默认路径") {
+                                    Lark2PadHistoryManager.shared.resetToDefaultFolder()
+                                }
+                                .buttonStyle(.plain)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                            }
+                        }
+                        .padding(.top, 2)
+                    }
+                } header: {
+                    Text("30 天转换历史与 iCloud 同步目录")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
         }
