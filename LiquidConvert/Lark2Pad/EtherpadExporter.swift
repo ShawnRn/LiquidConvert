@@ -54,8 +54,9 @@ enum EtherpadExporter {
                         prevIdx -= 1
                         continue
                     }
-                    if let u = extractImageURL(from: lines[prevIdx]) {
-                        backURLs.insert(u, at: 0)
+                    let lineURLs = extractImageURLs(from: lines[prevIdx])
+                    if !lineURLs.isEmpty {
+                        backURLs.insert(contentsOf: lineURLs, at: 0)
                         startIdx = prevIdx
                         prevIdx -= 1
                     } else {
@@ -72,8 +73,9 @@ enum EtherpadExporter {
                         nextIdx += 1
                         continue
                     }
-                    if let u = extractImageURL(from: lines[nextIdx]) {
-                        urls.append(u)
+                    let lineURLs = extractImageURLs(from: lines[nextIdx])
+                    if !lineURLs.isEmpty {
+                        urls.append(contentsOf: lineURLs)
                         endIdx = nextIdx
                         nextIdx += 1
                     } else {
@@ -542,8 +544,9 @@ enum EtherpadExporter {
                         prevIdx -= 1
                         continue
                     }
-                    if let u = extractImageURL(from: lines[prevIdx]) {
-                        backURLs.insert(u, at: 0)
+                    let lineURLs = extractImageURLs(from: lines[prevIdx])
+                    if !lineURLs.isEmpty {
+                        backURLs.insert(contentsOf: lineURLs, at: 0)
                         startIdx = prevIdx
                         prevIdx -= 1
                     } else {
@@ -560,8 +563,9 @@ enum EtherpadExporter {
                         nextIdx += 1
                         continue
                     }
-                    if let u = extractImageURL(from: lines[nextIdx]) {
-                        urls.append(u)
+                    let lineURLs = extractImageURLs(from: lines[nextIdx])
+                    if !lineURLs.isEmpty {
+                        urls.append(contentsOf: lineURLs)
                         endIdx = nextIdx
                         nextIdx += 1
                     } else {
@@ -786,33 +790,59 @@ enum EtherpadExporter {
         return false
     }
 
-    private static func extractImageURL(from line: String) -> String? {
+    private static func extractImageURLs(from line: String) -> [String] {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        let mdPattern = "^!\\[[^\\]]*\\]\\(([^)]+)\\)$"
-        if let regex = try? NSRegularExpression(pattern: mdPattern, options: []),
-           let match = regex.firstMatch(in: trimmed, options: [], range: NSRange(location: 0, length: (trimmed as NSString).length)),
-           match.numberOfRanges > 1 {
-            return (trimmed as NSString).substring(with: match.range(at: 1))
+        var urls: [String] = []
+
+        // 1. Extract Markdown image URLs: ![alt](url)
+        let mdPattern = "!\\[[^\\]]*\\]\\(([^)]+)\\)"
+        if let regex = try? NSRegularExpression(pattern: mdPattern, options: []) {
+            let nsString = trimmed as NSString
+            let matches = regex.matches(in: trimmed, options: [], range: NSRange(location: 0, length: nsString.length))
+            for match in matches {
+                if match.numberOfRanges > 1 {
+                    urls.append(nsString.substring(with: match.range(at: 1)))
+                }
+            }
         }
-        if trimmed.lowercased().contains("<img"),
-           let src = firstAttribute("src", in: trimmed) {
-            return src
+
+        // 2. Extract HTML img src URLs: <img ... src="url" ...>
+        if trimmed.lowercased().contains("<img") {
+            let imgPattern = "<img[^>]+src=[\"']([^\"']+)[\"']"
+            if let regex = try? NSRegularExpression(pattern: imgPattern, options: [.caseInsensitive]) {
+                let nsString = trimmed as NSString
+                let matches = regex.matches(in: trimmed, options: [], range: NSRange(location: 0, length: nsString.length))
+                for match in matches {
+                    if match.numberOfRanges > 1 {
+                        let src = nsString.substring(with: match.range(at: 1))
+                        if !urls.contains(src) {
+                            urls.append(src)
+                        }
+                    }
+                }
+            }
         }
-        return nil
+
+        return urls
+    }
+
+    private static func extractImageURL(from line: String) -> String? {
+        return extractImageURLs(from: line).first
     }
 
     private static func buildWeChatHorizontalSliderHTML(imageURLs: [String]) -> String {
         let count = imageURLs.count
         guard count > 0 else { return "" }
+        let totalWidthPercent = count * 100
         let itemWidthPercent = String(format: "%.4f", 100.0 / Double(count)) + "%"
         var itemsHTML = ""
         for url in imageURLs {
-            itemsHTML += "<section style=\"display: inline-block; width: \(itemWidthPercent); min-width: \(itemWidthPercent); max-width: \(itemWidthPercent);\"><img src=\"\(htmlEscaped(url))\" style=\"min-width: 100%; max-width: 100%; padding-right: 5px; display: block;\"></section>"
+            itemsHTML += "<section style=\"display: inline-block; width: \(itemWidthPercent); min-width: \(itemWidthPercent); max-width: \(itemWidthPercent); vertical-align: top; box-sizing: border-box;\"><img src=\"\(htmlEscaped(url))\" style=\"width: 100%; max-width: 100%; display: block; border-radius: 8px;\"></section>"
         }
         return """
         <section style="margin-bottom: 32px; padding: 0 14px; box-sizing: border-box; font-size: 0px;" data-type="custom-block">
         <section class="overflow-scrolling" style="min-width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;">
-        <section style="min-width: \(count * 100)%; max-width: \(count * 100)%;">
+        <section style="min-width: \(totalWidthPercent)%; max-width: \(totalWidthPercent)%; white-space: nowrap;">
         \(itemsHTML)
         </section>
         </section>
@@ -957,8 +987,9 @@ enum EtherpadExporter {
                         prevIdx -= 1
                         continue
                     }
-                    if let u = extractImageURL(from: lines[prevIdx]) {
-                        backURLs.insert(u, at: 0)
+                    let lineURLs = extractImageURLs(from: lines[prevIdx])
+                    if !lineURLs.isEmpty {
+                        backURLs.insert(contentsOf: lineURLs, at: 0)
                         startIdx = prevIdx
                         prevIdx -= 1
                     } else {
@@ -975,8 +1006,9 @@ enum EtherpadExporter {
                         nextIdx += 1
                         continue
                     }
-                    if let u = extractImageURL(from: lines[nextIdx]) {
-                        urls.append(u)
+                    let lineURLs = extractImageURLs(from: lines[nextIdx])
+                    if !lineURLs.isEmpty {
+                        urls.append(contentsOf: lineURLs)
                         endIdx = nextIdx
                         nextIdx += 1
                     } else {

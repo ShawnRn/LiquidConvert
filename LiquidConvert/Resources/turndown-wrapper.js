@@ -95,7 +95,52 @@ function loadHtmlAndGetImages(htmlStr) {
         }
     });
 
-    // 过滤与防重：去除隐藏/无效 img 及容器内部重复 img 标签
+    // 扩展飞书云文档多图画廊组件 (仅在 DOM 中的 img 数量少于 JSON 列表时补全缺失项)
+    const galleries = window.activeDoc.querySelectorAll('[data-ace-gallery-json], [data-gallery-json]');
+    galleries.forEach(gallery => {
+        const jsonStr = gallery.getAttribute('data-ace-gallery-json') || gallery.getAttribute('data-gallery-json');
+        if (!jsonStr) return;
+        try {
+            const data = JSON.parse(jsonStr);
+            const items = data.items || data.file_list || [];
+            if (Array.isArray(items) && items.length > 0) {
+                const existingImgs = Array.from(gallery.querySelectorAll('img'));
+                if (existingImgs.length < items.length) {
+                    const existingSrcs = existingImgs.map(i => i.getAttribute('src') || '');
+                    const firstImg = existingImgs[0];
+                    const firstSrc = firstImg ? (firstImg.getAttribute('src') || '') : '';
+                    const firstToken = items[0] ? items[0].file_token : null;
+
+                    items.forEach((item) => {
+                        const token = item.file_token || '';
+                        const alreadyPresent = existingSrcs.some(src => (token && src.includes(token)) || (item.src && src.includes(decodeURIComponent(item.src))));
+                        if (alreadyPresent) return;
+
+                        let newSrc = '';
+                        if (item.file_token && firstToken && firstSrc) {
+                            newSrc = firstSrc.replace(firstToken, item.file_token);
+                        }
+                        if (!newSrc && item.src) {
+                            newSrc = decodeURIComponent(item.src);
+                        }
+                        if (!newSrc && item.file_token) {
+                            newSrc = 'https://internal-api-drive-stream.feishu.cn/space/api/box/stream/download/preview/' + item.file_token + '/?preview_type=16';
+                        }
+
+                        if (newSrc) {
+                            const newImg = window.activeDoc.createElement('img');
+                            newImg.setAttribute('src', newSrc);
+                            gallery.appendChild(newImg);
+                        }
+                    });
+                }
+            }
+        } catch (e) {
+            console.error('Failed to parse Feishu gallery JSON', e);
+        }
+    });
+
+    // 过滤与防重：去除隐藏/无效 img 标签及紧邻的重复 src
     const rawImages = Array.from(window.activeDoc.querySelectorAll('img'));
     let seenSrcs = new Set();
     rawImages.forEach(img => {
@@ -110,21 +155,8 @@ function loadHtmlAndGetImages(htmlStr) {
         }
         let cleanSrc = src.split('?')[0];
 
-        // 检查父容器 (如 figure、div.image-wrapper 等) 内部多重 img 标签
-        let parent = img.closest('figure, div.image-block, div.image-wrapper, div.image-box, div.image-container');
-        if (parent) {
-            let siblingImgs = parent.querySelectorAll('img');
-            if (siblingImgs.length > 1) {
-                let firstImg = siblingImgs[0];
-                if (img !== firstImg) {
-                    img.remove();
-                    return;
-                }
-            }
-        }
-
-        // 检查非滑动卡片容器内紧邻的相同 src 图片重复
-        let isInsideSlider = img.closest('[class*="slider"], [data-type*="slider"]');
+        // 检查非滑动卡片容器内紧邻的完全相同 src 图片重复
+        let isInsideSlider = img.closest('[class*="slider"], [data-type*="slider"], [class*="gallery"]');
         if (!isInsideSlider) {
             let prev = img.previousElementSibling;
             if (prev && prev.tagName && prev.tagName.toLowerCase() === 'img') {
