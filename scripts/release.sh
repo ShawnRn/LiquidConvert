@@ -139,6 +139,16 @@ sign_update_file() {
 TARGET_ARM64="$DMG_ARM64"
 TARGET_X86_64="$DMG_X86_64"
 
+if [ -f "$REMOTE_ARM64" ]; then
+    echo "提示: 使用从 GitHub Release 下载的真实 arm64 资产进行签名和计算大小。"
+    TARGET_ARM64="$REMOTE_ARM64"
+fi
+
+if [ -f "$REMOTE_X86_64" ]; then
+    echo "提示: 使用从 GitHub Release 下载的真实 x86_64 资产进行签名和计算大小。"
+    TARGET_X86_64="$REMOTE_X86_64"
+fi
+
 SIG_ARM64=$(sign_update_file "$TARGET_ARM64")
 SIG_X86_64=$(sign_update_file "$TARGET_X86_64")
 
