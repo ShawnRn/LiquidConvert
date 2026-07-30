@@ -100,9 +100,9 @@ enum EtherpadExporter {
                 if inList { result += "</ul>\n\n"; inList = false }
                 switch block.kind {
                 case .horizontal:
-                    result += buildHorizontalSliderHTML(imageURLs: block.urls) + "\n\n"
+                    result += buildWordPressHorizontalSliderHTML(imageURLs: block.urls) + "\n\n"
                 case .vertical:
-                    result += buildVerticalSliderHTML(imageURLs: block.urls) + "\n\n"
+                    result += buildWordPressVerticalSliderHTML(imageURLs: block.urls) + "\n\n"
                 }
                 index = block.endIndex + 1
                 continue
@@ -148,7 +148,7 @@ enum EtherpadExporter {
                 }
 
                 if !calloutLines.isEmpty {
-                    result += buildCalloutCardHTML(lines: calloutLines) + "\n\n"
+                    result += buildWordPressCalloutCardHTML(lines: calloutLines) + "\n\n"
                     index = subIdx
                     continue
                 }
@@ -588,9 +588,9 @@ enum EtherpadExporter {
                 if inList { result += "</ul>\n"; inList = false }
                 switch block.kind {
                 case .horizontal:
-                    result += buildHorizontalSliderHTML(imageURLs: block.urls) + "\n"
+                    result += buildWeChatHorizontalSliderHTML(imageURLs: block.urls) + "\n"
                 case .vertical:
-                    result += buildVerticalSliderHTML(imageURLs: block.urls) + "\n"
+                    result += buildWeChatVerticalSliderHTML(imageURLs: block.urls) + "\n"
                 }
                 index = block.endIndex + 1
                 continue
@@ -646,7 +646,7 @@ enum EtherpadExporter {
                 }
 
                 if !calloutLines.isEmpty {
-                    result += buildCalloutCardHTML(lines: calloutLines, imgRadius: "8px") + "\n"
+                    result += buildWeChatCalloutCardHTML(lines: calloutLines, imgRadius: "8px") + "\n"
                     index = subIdx
                     continue
                 }
@@ -801,7 +801,60 @@ enum EtherpadExporter {
         return nil
     }
 
-    private static func buildHorizontalSliderHTML(imageURLs: [String]) -> String {
+    private static func buildWeChatHorizontalSliderHTML(imageURLs: [String]) -> String {
+        let count = imageURLs.count
+        guard count > 0 else { return "" }
+        let itemWidthPercent = String(format: "%.4f", 100.0 / Double(count)) + "%"
+        var itemsHTML = ""
+        for url in imageURLs {
+            itemsHTML += "<section style=\"display: inline-block; width: \(itemWidthPercent); min-width: \(itemWidthPercent); max-width: \(itemWidthPercent);\"><img src=\"\(htmlEscaped(url))\" style=\"min-width: 100%; max-width: 100%; padding-right: 5px; display: block;\"></section>"
+        }
+        return """
+        <section style="margin-bottom: 32px; padding: 0 14px; box-sizing: border-box; font-size: 0px;" data-type="custom-block">
+        <section class="overflow-scrolling" style="min-width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+        <section style="min-width: \(count * 100)%; max-width: \(count * 100)%;">
+        \(itemsHTML)
+        </section>
+        </section>
+        <section style="margin: 6px 0px; font-size: 12px; line-height: 17px; color: rgb(167, 167, 167);">向左滑动查看更多内容</section>
+        <img src="https://wxlayout.ifanrusercontent.com/yd2qr5ofbspk7y3smytx3514yidjgoc2.gif" style="width: 42px; max-height: 10px;">
+        </section>
+        """
+    }
+
+    private static func buildWeChatVerticalSliderHTML(imageURLs: [String]) -> String {
+        guard !imageURLs.isEmpty else { return "" }
+        var imgsHTML = ""
+        for url in imageURLs {
+            imgsHTML += "<img src=\"\(htmlEscaped(url))\" style=\"display: block; width: 100%;\">\n"
+        }
+        return """
+        <section style="margin: 26px 0; padding: 0 14px; box-sizing: border-box;" data-type="custom-block">
+        <section style="width: 100%; height: 300px; overflow: hidden;">
+        <section style="display: flex; flex-direction: column; height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch;">
+        \(imgsHTML)</section>
+        </section>
+        <section style="margin: 6px 0px; font-size: 12px; line-height: 17px; color: rgb(167, 167, 167); text-align: center;">上下滑动查看更多内容</section>
+        </section>
+        """
+    }
+
+    private static func buildWeChatCalloutCardHTML(lines: [String], imgRadius: String = "8px") -> String {
+        var innerSections = ""
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+            let content = parseWeChatInline(trimmed, imgRadius: imgRadius)
+            innerSections += "<section style=\"margin-bottom: 16px;\"><span>\(content)</span></section>\n"
+        }
+        guard !innerSections.isEmpty else { return "" }
+        return """
+        <section style="margin-bottom: 46px; padding: 24px 15px 8px; font-size: 14px; line-height: 28px; background: rgb(248, 248, 248); color: rgb(105, 105, 105); border-radius: 12px; text-align: justify;" data-type="custom-block">
+        \(innerSections)</section>
+        """
+    }
+
+    private static func buildWordPressHorizontalSliderHTML(imageURLs: [String]) -> String {
         let count = imageURLs.count
         guard count > 0 else { return "" }
         var itemsHTML = ""
@@ -815,7 +868,7 @@ enum EtherpadExporter {
         """
     }
 
-    private static func buildVerticalSliderHTML(imageURLs: [String]) -> String {
+    private static func buildWordPressVerticalSliderHTML(imageURLs: [String]) -> String {
         guard !imageURLs.isEmpty else { return "" }
         var imgsHTML = ""
         for url in imageURLs {
@@ -828,12 +881,12 @@ enum EtherpadExporter {
         """
     }
 
-    private static func buildCalloutCardHTML(lines: [String], imgRadius: String = "8px") -> String {
+    private static func buildWordPressCalloutCardHTML(lines: [String]) -> String {
         var innerParagraphs = ""
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { continue }
-            let content = parseWeChatInline(trimmed, imgRadius: imgRadius)
+            let content = parseInline(trimmed)
             innerParagraphs += "<p style=\"margin: 0 0 12px 0; padding: 0; line-height: 28px;\"><span>\(content)</span></p>\n"
         }
         guard !innerParagraphs.isEmpty else { return "" }
@@ -952,9 +1005,9 @@ enum EtherpadExporter {
                 }
                 switch block.kind {
                 case .horizontal:
-                    result += buildHorizontalSliderHTML(imageURLs: block.urls) + "\n"
+                    result += buildWeChatHorizontalSliderHTML(imageURLs: block.urls) + "\n"
                 case .vertical:
-                    result += buildVerticalSliderHTML(imageURLs: block.urls) + "\n"
+                    result += buildWeChatVerticalSliderHTML(imageURLs: block.urls) + "\n"
                 }
                 index = block.endIndex + 1
                 continue
@@ -1083,7 +1136,7 @@ enum EtherpadExporter {
                 }
 
                 if !calloutLines.isEmpty {
-                    result += buildCalloutCardHTML(lines: calloutLines, imgRadius: imgRadius) + "\n"
+                    result += buildWeChatCalloutCardHTML(lines: calloutLines, imgRadius: imgRadius) + "\n"
                     index = subIdx
                     continue
                 }
