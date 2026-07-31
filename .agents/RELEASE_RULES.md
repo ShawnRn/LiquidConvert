@@ -11,16 +11,19 @@
 1.  **Commit & Push Code**: Handle everything except `appcast.xml`.
 2.  **Build Dual-Arch DMGs Locally**: Run `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/build.sh release` and verify both `LiquidConvert_<version>_arm64.dmg` and `LiquidConvert_<version>_x86_64.dmg` exist.
 3.  **Create Release**: Use `gh release create` or the web UI. Upload both architecture-specific DMGs.
-4.  **Generate Appcast**: Local run of `release.sh`. This script must sign the bytes users actually download from GitHub Release, not blindly trust the local DMG. If the local machine does not have `SPARKLE_PRIVATE_KEY` or the Sparkle Keychain private key, do not fabricate or copy signatures; use the manual Release workflow after the script and workflow safety checks are committed.
+4.  **Generate Appcast**: Run `release.sh`. This script downloads published release assets from GitHub Release and generates Sparkle EdDSA signatures (`sparkle:edSignature`).
+    - **Multi-Device Signing**: If building across multiple machines or in CI, export the environment variable `SPARKLE_PRIVATE_KEY="<base64_private_key>"`. When present, `release.sh` passes the key via stdin (`--ed-key-file -`), bypassing the macOS Keychain completely.
+    - If `SPARKLE_PRIVATE_KEY` is omitted, `release.sh` falls back to reading the private key from macOS Keychain.
 5.  **Final Push**: Commit and push `appcast.xml` ONLY after step 3 is confirmed.
 
 ## Local Xcode Packaging Rule
-- GitHub Actions automated Mac releases are deprecated. Routine Mac releases MUST be built and packaged using local Xcode via `./scripts/build.sh release`.
-- `release.sh` runs locally to download published release assets, calculate byte lengths, generate Sparkle EdDSA signatures (`sparkle:edSignature`), and update `appcast.xml`.
+- GitHub Actions automated Mac releases are deprecated. Routine Mac releases MUST be built and packaged using Xcode via `./scripts/build.sh release`.
+- `release.sh` downloads published release assets, calculates byte lengths, generates Sparkle EdDSA signatures (`sparkle:edSignature`), and updates `appcast.xml`.
+- Multi-device releases should use `SPARKLE_PRIVATE_KEY` environment variable to ensure all devices generate identical, valid Sparkle signatures without needing local Keychain configuration.
 
 ## Sparkle Verification Rule
-- Before `appcast.xml` is committed, re-download every release asset from GitHub and use those remote bytes to compute `sparkle:edSignature` and `length`.
-- If the downloaded asset hash differs from the local DMG hash, treat the remote asset as the source of truth for Sparkle metadata, otherwise the app will show “更新未正确签名”.
+- Before `appcast.xml` is committed, `release.sh` re-downloads every release asset from GitHub and uses those remote bytes to compute `sparkle:edSignature` and `length`.
+- Treat the remote downloaded asset as the source of truth for Sparkle metadata, so that the published `appcast.xml` strictly matches the remote file served to users.
 - `release.sh` must hard-fail if `sign_update` exits non-zero, emits an empty signature, emits text containing `ERROR`, or `xmllint` rejects the generated XML. Never let a signing error string become `sparkle:edSignature`.
 - If the latest published update is broken, replace the existing release/appcast in place instead of minting a new user-visible version just to bypass the bad metadata.
 - When replacing a broken package under the same user-visible version, bump `CURRENT_PROJECT_VERSION` before building so installed apps can detect the replacement build.

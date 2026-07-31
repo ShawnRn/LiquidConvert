@@ -17,6 +17,20 @@
 - The executable must keep `<ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>` so Start Menu and shortcut icons use the same multi-size asset as the title bar.
 - Lark2Pad must support clipboard import, Markdown import and drag-and-drop, Etherpad HTML, rich-text copying for WeChat Official Accounts, file export, and authenticated Pad synchronization.
 
+## macOS release process
+
+1. Update `MARKETING_VERSION` and increment `CURRENT_PROJECT_VERSION` in Xcode project settings.
+2. Build dual-architecture DMGs (`arm64` and `x86_64`):
+   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer BUILD_ARCHS="arm64 x86_64" ./scripts/build.sh release`
+3. Create/upload GitHub Release:
+   `gh release create "v$VERSION" "releases/LiquidConvert_${VERSION}_arm64.dmg" "releases/LiquidConvert_${VERSION}_x86_64.dmg" --title "LiquidConvert $VERSION"`
+4. Run `release.sh` to fetch remote release assets and generate Sparkle signatures for `appcast.xml`:
+   `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./scripts/release.sh "$VERSION"`
+5. Verify XML (`xmllint --noout appcast.xml`), then commit and push `appcast.xml` to `main`.
+
+> [!NOTE]
+> **Multi-device packaging without Keychain**: Set the environment variable `SPARKLE_PRIVATE_KEY="<base64_ed25519_private_key>"` before running `release.sh`. When `SPARKLE_PRIVATE_KEY` is present, `release.sh` will bypass macOS Keychain and sign directly from the environment variable, enabling consistent multi-device or CI signing.
+
 ## Windows release process
 
 1. Run `scripts/build_windows_installer.ps1` from PowerShell.

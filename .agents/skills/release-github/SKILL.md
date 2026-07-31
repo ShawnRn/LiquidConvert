@@ -46,6 +46,7 @@ changelog: "v2.1.0: 废弃 GitHub Actions 发版，统一采用本地 Xcode 编�
 ## Sparkle 关键校验
 
 - `SUFeedURL` 应指向 `https://raw.githubusercontent.com/ShawnRn/LiquidConvert/main/appcast.xml`。
-- `SUPublicEDKey` 必须与本地使用的 EdDSA 私钥匹配。
+- `SUPublicEDKey` 必须与使用的 EdDSA 私钥匹配。
+- **多设备无 Keychain 依赖签名**：可设置 `export SPARKLE_PRIVATE_KEY="<base64_ed25519_private_key>"`。`release.sh` 检测到该变量时会自动绕过 macOS 钥匙串进行签名，适合在多台 Mac 或 CI/CD 环境中使用。
 - `release.sh` 必须优先下载 GitHub Release 上的远端 DMG，并以远端字节生成 `length` 与 `sparkle:edSignature`。
 - 每个版本的 appcast item 必须包含两个 enclosure：`sparkle:nativeArchitecture="arm64"` 与 `"x86_64"`。
