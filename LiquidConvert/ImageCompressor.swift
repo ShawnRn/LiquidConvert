@@ -1055,10 +1055,10 @@ struct ImageCompressor {
         originalFPS: Int,
         options: CompressionOptions
     ) throws -> URL {
-        // 策略：保持分辨率，逐步降低 色深 → FPS → 分辨率
-        let colorDepthSteps = [256, 128, 64, 32]
-        let fpsSteps = [originalFPS, max(15, originalFPS / 2), 10, 8, 5]
-        let resolutionSteps = [1.0, 0.8, 0.6, 0.5, 0.4]
+        // 优化策略：按常用梯度测试，避免多达 100 次暴力穷举
+        let colorDepthSteps = [256, 128, 64]
+        let fpsSteps = Array(Set([originalFPS, min(originalFPS, 15), 10, 5])).sorted(by: >)
+        let resolutionSteps = [1.0, 0.75, 0.5, 0.35]
 
         for scale in resolutionSteps {
             for fps in fpsSteps {
@@ -1128,8 +1128,8 @@ struct ImageCompressor {
         options: CompressionOptions
     ) throws -> URL {
         // 策略：保持色彩，逐步降低 分辨率 → FPS → 色深
-        let resolutionSteps = [1.0, 0.8, 0.6, 0.5, 0.4, 0.3]
-        let fpsSteps = [originalFPS, max(15, originalFPS / 2), 10, 8, 5]
+        let resolutionSteps = [1.0, 0.75, 0.5, 0.35]
+        let fpsSteps = Array(Set([originalFPS, min(originalFPS, 15), 10, 5])).sorted(by: >)
         let colorDepthSteps = [256, 128, 64]
 
         for colorDepth in colorDepthSteps {

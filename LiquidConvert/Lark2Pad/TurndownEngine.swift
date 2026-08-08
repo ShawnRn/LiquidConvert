@@ -37,22 +37,33 @@ final class TurndownEngine: NSObject {
         webView.loadHTMLString(bootstrapHTML, baseURL: URL(string: "about:blank"))
         
         // Wait for page load with a 3-second safety timeout
-        try? await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask { [weak self] in
-                guard let self = self else { return }
-                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                    Task { @MainActor in
-                        self.readyContinuation = continuation
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask { [weak self] in
+                    guard let self = self else { return }
+                    if await MainActor.run(body: { self.isReady }) { return }
+                    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                        Task { @MainActor in
+                            if self.isReady {
+                                continuation.resume()
+                            } else {
+                                self.readyContinuation = continuation
+                            }
+                        }
                     }
                 }
+                group.addTask {
+                    try await Task.sleep(for: .seconds(3))
+                    throw NSError(domain: "TurndownEngine", code: 1, 
+                                 userInfo: [NSLocalizedDescriptionKey: "WebView initialization timed out"])
+                }
+                try await group.next()
+                group.cancelAll()
             }
-            group.addTask {
-                try await Task.sleep(for: .seconds(3))
-                throw NSError(domain: "TurndownEngine", code: 1, 
-                             userInfo: [NSLocalizedDescriptionKey: "WebView initialization timed out"])
-            }
-            try await group.next()
-            group.cancelAll()
+        } catch {
+            print("[TurndownEngine] ⚠️ WebView 加载超时或异常: \(error.localizedDescription)")
+            readyContinuation?.resume()
+            readyContinuation = nil
         }
         
         // Inject JS libraries sequentially

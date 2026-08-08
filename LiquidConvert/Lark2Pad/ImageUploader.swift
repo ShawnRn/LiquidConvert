@@ -5,7 +5,6 @@ import CoreGraphics
 import SwiftUI
 
 /// 处理飞书图片下载并自动上传到公司私有图床的工具类
-@MainActor
 final class ImageUploader {
     /// 静态内存缓存，用于避免在转换出错重试时重复下载和上传相同的图片
     private static let cacheLock = NSLock()
@@ -56,7 +55,7 @@ final class ImageUploader {
     }
     
     /// 强支持 100% 写入剪贴板：异步确保 HTML 中所有非 data: 的 <img> src 均在第一时间补齐并转为 Base64 Data URI
-    nonisolated static func convertImageURLsToBase64DataURIsAsync(in html: String) async -> String {
+    static func convertImageURLsToBase64DataURIsAsync(in html: String) async -> String {
         var result = await MainActor.run { convertImageURLsToBase64DataURIs(in: html) }
         
         let pattern = #"<img\b[^>]*?\bsrc=["'](https?://[^"']+)["']"#
@@ -176,8 +175,8 @@ final class ImageUploader {
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default
         config.httpMaximumConnectionsPerHost = 6
-        config.timeoutIntervalForRequest = 20 // 缩短超时时间，配合缓存机制，在网络挂起时能及时超时重试，避免永久卡死
-        config.timeoutIntervalForResource = 45
+        config.timeoutIntervalForRequest = 45
+        config.timeoutIntervalForResource = 90
         return URLSession(configuration: config)
     }()
     
@@ -208,8 +207,9 @@ final class ImageUploader {
 
                     let newURL = try await uploadSingleImage(url: item.url, behavior: behavior) { fileProgress, speed in
                         Task {
-                            let snapshot = await tracker.update(position: position, fraction: fileProgress, speed: speed)
-                            await MainActor.run { progress?(snapshot) }
+                            if let snapshot = await tracker.update(position: position, fraction: fileProgress, speed: speed) {
+                                await MainActor.run { progress?(snapshot) }
+                            }
                         }
                     }
 
@@ -257,8 +257,8 @@ final class ImageUploader {
         }
         
         do {
-            // 1. 下载图片数据 (引入 withTimeout 30秒限时保护，防止下载在 data_stall 网络环境下挂死)
-            let downloadResult = try await withTimeout(seconds: 10.0) {
+            // 1. 下载图片数据 (引入 withTimeout 45秒限时保护，防止下载在 data_stall 网络环境下挂死)
+            let downloadResult = try await withTimeout(seconds: 45.0) {
                 let (rawData, response) = try await session.data(from: imageURL)
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
                 let mimeType = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? "image/png"
@@ -443,7 +443,7 @@ final class ImageUploader {
         }
         
         do {
-            let responseString = try await withTimeout(seconds: 10.0) {
+            let responseString = try await withTimeout(seconds: 60.0) {
                 let (responseData, response) = try await session.upload(for: request, from: body, delegate: delegate)
                 let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
                 let responseStr = String(data: responseData, encoding: .utf8) ?? "空响应"
@@ -494,7 +494,7 @@ final class ImageUploader {
             }
             group.addTask {
                 try await Task.sleep(for: .seconds(seconds))
-                throw URLError(.timedOut, userInfo: [NSLocalizedDescriptionKey: "请求执行超时（安全限制 \(seconds) 秒）"])
+                throw URLError(.timedOut, userInfo: [NSLocalizedDescriptionKey: "请求执行超时（安全限制 \(Int(seconds)) 秒）"])
             }
             let result = try await group.next()!
             group.cancelAll()
@@ -806,6 +806,7 @@ private actor UploadProgressTracker {
     private var activePositions: Set<Int> = []
     private var completedPositions: Set<Int> = []
     private var latestSpeed = "准备中..."
+    private var lastReportTime = Date.distantPast
 
     init(total: Int) {
         self.total = total
@@ -818,17 +819,13 @@ private actor UploadProgressTracker {
 
     func markStarted(position: Int) -> ImageUploader.UploadBatchProgress {
         activePositions.insert(position)
+        lastReportTime = Date()
         return buildSnapshot()
     }
 
-    func update(position: Int, fraction: Double, speed: String) -> ImageUploader.UploadBatchProgress {
-        guard fractions.indices.contains(position) else {
-            return buildSnapshot()
-        }
-
-        // 如果已经完成，则直接忽略任何滞后的进度更新，避免把已完成的 position 重新插入 activePositions 中
-        guard !completedPositions.contains(position) else {
-            return buildSnapshot()
+    func update(position: Int, fraction: Double, speed: String) -> ImageUploader.UploadBatchProgress? {
+        guard fractions.indices.contains(position), !completedPositions.contains(position) else {
+            return nil
         }
 
         activePositions.insert(position)
@@ -836,7 +833,13 @@ private actor UploadProgressTracker {
         if !speed.isEmpty {
             latestSpeed = "\(activePositions.count) 路并发 · \(speed)"
         }
-        return buildSnapshot()
+        
+        let now = Date()
+        if now.timeIntervalSince(lastReportTime) >= 0.08 || completedPositions.count == total {
+            lastReportTime = now
+            return buildSnapshot()
+        }
+        return nil
     }
 
     func markFinished(position: Int) -> ImageUploader.UploadBatchProgress {
@@ -846,6 +849,7 @@ private actor UploadProgressTracker {
         activePositions.remove(position)
         completedPositions.insert(position)
         latestSpeed = activePositions.isEmpty ? "已完成" : latestSpeed
+        lastReportTime = Date()
         return buildSnapshot()
     }
 
