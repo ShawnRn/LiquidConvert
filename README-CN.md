@@ -55,6 +55,15 @@
 - 从视频文件中无损提取音频，支持导出为 MP3, FLAC, WAV, M4A。
 - 支持批量拖拽处理。
 
+### 6. 📄 AI 文档提取
+- 支持 PDF、Office、HTML、文本、图片和网页文章转换为 Markdown，并针对微信公众号文章提供正文级提取、请求合并、短时缓存和退避重试。
+- 图形界面的「批处理」菜单支持批量导入、处理和导出全部 Markdown，也可以关闭图片 OCR 以显著缩短多图文章的处理时间。
+- CLI 支持单篇与批处理；批处理中单项失败不会中断其余项目，并可输出 JSON 汇总：
+  ```bash
+  liquidconvert --batch <URL-or-file>... --output-dir <目录> --no-ocr --json
+  ```
+- 内置文档转换运行时采用 MarkItDown `0.1.7`，升级时使用版本化环境，安装失败不会破坏原有可用版本。
+
 ## 🎨 设计与体验
 
 - **Liquid Glass UI**: 深度定制的界面图层，结合原生材质 (`.underWindowBackground`) 与微调的阴影和渐变，带来通透的视觉体验。

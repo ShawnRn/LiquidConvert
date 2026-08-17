@@ -22,7 +22,13 @@ enum LiquidConvertCLIInstaller {
 
     @MainActor
     static func promptForInstallIfNeeded() {
-        guard installedCLIURLForCurrentApp() == nil else { return }
+        if let installedURL = installedCLIURLForCurrentApp() {
+            if (try? String(contentsOf: installedURL, encoding: .utf8)) != wrapperScript {
+                try? wrapperScript.write(to: installedURL, atomically: true, encoding: .utf8)
+                try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: installedURL.path)
+            }
+            return
+        }
         let defaults = UserDefaults.standard
         guard defaults.bool(forKey: promptKey) == false else { return }
         defaults.set(true, forKey: promptKey)
@@ -78,7 +84,7 @@ enum LiquidConvertCLIInstaller {
         """
         #!/bin/zsh
         case "$1" in
-          --extract-markdown|--install-cli|--cli-status|--lark2pad-export|--lark2pad-sync)
+          --extract-markdown|--batch|--install-cli|--cli-status|--lark2pad-export|--lark2pad-sync)
             exec "\(currentExecutablePath)" "$@"
             ;;
           *)
@@ -110,6 +116,8 @@ enum AIDocumentCLI {
         switch first {
         case "--extract-markdown":
             runExtractionAndExit(Array(userArgs.dropFirst()))
+        case "--batch":
+            runBatchExtractionAndExit(Array(userArgs.dropFirst()))
         case "--lark2pad-export":
             runLark2PadExportAndExit(Array(userArgs.dropFirst()))
         case "--lark2pad-sync":
@@ -145,6 +153,7 @@ enum AIDocumentCLI {
 
         var sourceValue: String?
         var outputPath: String?
+        var performOCR = true
         var index = 0
         while index < args.count {
             let arg = args[index]
@@ -156,6 +165,9 @@ enum AIDocumentCLI {
                 }
                 outputPath = args[index + 1]
                 index += 2
+            case "--no-ocr":
+                performOCR = false
+                index += 1
             default:
                 if sourceValue == nil {
                     sourceValue = arg
@@ -175,7 +187,10 @@ enum AIDocumentCLI {
 
         Task.detached(priority: .userInitiated) {
             do {
-                let result = try await ManagedMarkItDownRuntime.shared.extract(source: source) { message in
+                let result = try await ManagedMarkItDownRuntime.shared.extract(
+                    source: source,
+                    options: AIDocumentExtractionOptions(performOCR: performOCR)
+                ) { message in
                     fputs("[LiquidConvert] \(message)\n", stderr)
                 }
                 let markdown = result.markdown.trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
@@ -190,6 +205,118 @@ enum AIDocumentCLI {
                 fputs("LiquidConvert extraction failed: \(error.localizedDescription)\n", stderr)
                 Foundation.exit(1)
             }
+        }
+
+        dispatchMain()
+    }
+
+    private static func runBatchExtractionAndExit(_ args: [String]) {
+        AIDocumentRuntimeMode.isCLI = true
+
+        guard !args.isEmpty, !args.contains("--help") else {
+            printUsage()
+            Foundation.exit(args.contains("--help") ? 0 : 2)
+        }
+
+        var sourceValues: [String] = []
+        var outputDirectory: URL?
+        var performOCR = true
+        var emitJSON = false
+        var index = 0
+
+        while index < args.count {
+            switch args[index] {
+            case "--output-dir":
+                guard index + 1 < args.count else {
+                    fputs("Missing value for --output-dir.\n", stderr)
+                    Foundation.exit(2)
+                }
+                outputDirectory = expandPath(args[index + 1])
+                index += 2
+            case "--no-ocr":
+                performOCR = false
+                index += 1
+            case "--json":
+                emitJSON = true
+                index += 1
+            default:
+                if args[index].hasPrefix("--") {
+                    fputs("Unexpected argument: \(args[index])\n", stderr)
+                    Foundation.exit(2)
+                }
+                sourceValues.append(args[index])
+                index += 1
+            }
+        }
+
+        guard let outputDirectory else {
+            fputs("--output-dir is required for --batch.\n", stderr)
+            Foundation.exit(2)
+        }
+
+        var parsedSources: [AIDocumentSource] = []
+        for value in sourceValues {
+            guard let source = makeSource(from: value) else {
+                fputs("Invalid batch source: \(value)\n", stderr)
+                Foundation.exit(2)
+            }
+            parsedSources.append(source)
+        }
+        guard !parsedSources.isEmpty else {
+            fputs("Batch sources must be valid URLs or existing local file paths.\n", stderr)
+            Foundation.exit(2)
+        }
+
+        var seen = Set<String>()
+        let sources = parsedSources.filter { seen.insert($0.detailText).inserted }
+
+        Task { @MainActor in
+            var usedNames = Set<String>()
+            var exported: [[String: Any]] = []
+            var failures: [[String: Any]] = []
+            let options = AIDocumentExtractionOptions(performOCR: performOCR)
+
+            for (sourceIndex, source) in sources.enumerated() {
+                let prefix = "[\(sourceIndex + 1)/\(sources.count)]"
+                do {
+                    let result = try await ManagedMarkItDownRuntime.shared.extract(
+                        source: source,
+                        options: options
+                    ) { message in
+                        fputs("[LiquidConvert] \(prefix) \(message)\n", stderr)
+                    }
+                    let file = try AIDocumentMarkdownExporter.export(
+                        markdown: result.markdown,
+                        source: source,
+                        suggestedTitle: result.suggestedTitle,
+                        to: outputDirectory,
+                        reserving: &usedNames
+                    )
+                    exported.append([
+                        "source": source.detailText,
+                        "output": file.url.path,
+                    ])
+                    if !emitJSON { print(file.url.path) }
+                } catch {
+                    let failure: [String: Any] = [
+                        "source": source.detailText,
+                        "error": error.localizedDescription,
+                    ]
+                    failures.append(failure)
+                    fputs("[LiquidConvert] \(prefix) failed: \(error.localizedDescription)\n", stderr)
+                }
+            }
+
+            if emitJSON {
+                printJSON([
+                    "ok": failures.isEmpty,
+                    "output_dir": outputDirectory.path,
+                    "ocr_enabled": performOCR,
+                    "exported": exported,
+                    "failures": failures,
+                ])
+            }
+            Foundation.exit(failures.isEmpty ? 0 : 1)
         }
 
         dispatchMain()
@@ -355,13 +482,15 @@ enum AIDocumentCLI {
         print(
             """
             Usage:
-              liquidconvert <URL-or-file> [--output output.md]
-              LiquidConvert --extract-markdown <URL-or-file> [--output output.md]
+              liquidconvert <URL-or-file> [--output output.md] [--no-ocr]
+              LiquidConvert --extract-markdown <URL-or-file> [--output output.md] [--no-ocr]
+              liquidconvert --batch <URL-or-file>... --output-dir <dir> [--no-ocr] [--json]
               liquidconvert --lark2pad-export <markdown> --output-dir <dir> --json
               liquidconvert --lark2pad-sync <markdown> --pad-title <title> --json
               LiquidConvert --install-cli
 
-            Converts source files to Markdown and exports or syncs Lark2Pad artifacts.
+            Converts source files to Markdown. Batch mode continues after individual failures
+            and writes one uniquely named Markdown file per successful source.
             """
         )
     }

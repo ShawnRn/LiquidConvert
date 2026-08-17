@@ -6,12 +6,13 @@ enum WeChatArticleExtractor {
     private static let mobileUserAgent =
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 
-    private static let noiseKeywords = [
+    private static let exactNoiseLabels = Set([
         "微信扫一扫", "继续滑动看下一个", "向上滑动看下一个", "轻触阅读原文", "预览时标签不可点",
         "使用小程序", "允许", "取消", "知道了", "分析", "打开此内容", "完整服务", "赞", "在看",
         "分享", "留言", "收藏", "听过", "关注该公众号", "视频", "小程序", "轻点两下取消赞",
-        "轻点两下取消在看", "去验证", "环境异常", "当前环境异常"
-    ]
+        "轻点两下取消在看", "去验证", "环境异常", "当前环境异常",
+    ])
+    private static let blockedPagePhrases = ["访问过于频繁", "当前环境异常", "完成验证后即可继续访问"]
 
     nonisolated static func canHandle(_ url: URL) -> Bool {
         let host = url.host ?? ""
@@ -20,10 +21,11 @@ enum WeChatArticleExtractor {
 
     static func extract(
         from url: URL,
+        options: AIDocumentExtractionOptions = .standard,
         progress: (@Sendable (String) -> Void)? = nil
     ) async throws -> AIDocumentExtractionResult {
         if (url.host ?? "").contains("weibo.com") || (url.host ?? "").contains("weibo.cn") {
-            if let result = try? await extractWithBundledWXScript(url: url) {
+            if let result = try? await extractWithBundledWXScript(url: url, options: options) {
                 return result
             }
             throw NSError(domain: "WeChatArticleExtractor", code: -1, userInfo: [NSLocalizedDescriptionKey: "Weibo 提取失败。"])
@@ -37,18 +39,23 @@ enum WeChatArticleExtractor {
             do {
                 article = try await WeChatRenderedPageReader().extract(url: url)
             } catch {
-                if let result = try? await extractWithBundledWXScript(url: url) {
+                if let result = try? await extractWithBundledWXScript(url: url, options: options) {
                     return result
                 }
                 throw error
             }
         }
 
-        let markdown = await MarkdownImageOCRIntegrator.insertOCRIfNeeded(
-            into: article.markdownDocument,
-            source: .link(url),
-            progress: progress
-        )
+        let markdown: String
+        if options.performOCR {
+            markdown = await MarkdownImageOCRIntegrator.insertOCRIfNeeded(
+                into: article.markdownDocument,
+                source: .link(url),
+                progress: progress
+            )
+        } else {
+            markdown = article.markdownDocument
+        }
         let cleanedMarkdown = ManagedMarkItDownRuntime.stripMarkdownEscapes(markdown)
         return AIDocumentExtractionResult(
             markdown: cleanedMarkdown,
@@ -59,10 +66,11 @@ enum WeChatArticleExtractor {
 
     static func extractWithoutRendering(
         from url: URL,
+        options: AIDocumentExtractionOptions = .standard,
         progress: (@Sendable (String) -> Void)? = nil
     ) async throws -> AIDocumentExtractionResult {
         if (url.host ?? "").contains("weibo.com") || (url.host ?? "").contains("weibo.cn") {
-            if let result = try? await extractWithBundledWXScript(url: url) {
+            if let result = try? await extractWithBundledWXScript(url: url, options: options) {
                 return result
             }
             throw NSError(domain: "WeChatArticleExtractor", code: -1, userInfo: [NSLocalizedDescriptionKey: "Weibo 提取失败。"])
@@ -71,11 +79,16 @@ enum WeChatArticleExtractor {
         do {
             let html = try await fetchHTML(from: url)
             let article = try parseArticle(from: html, url: url)
-            let markdown = await MarkdownImageOCRIntegrator.insertOCRIfNeeded(
-                into: article.markdownDocument,
-                source: .link(url),
-                progress: progress
-            )
+            let markdown: String
+            if options.performOCR {
+                markdown = await MarkdownImageOCRIntegrator.insertOCRIfNeeded(
+                    into: article.markdownDocument,
+                    source: .link(url),
+                    progress: progress
+                )
+            } else {
+                markdown = article.markdownDocument
+            }
             let cleanedMarkdown = ManagedMarkItDownRuntime.stripMarkdownEscapes(markdown)
             return AIDocumentExtractionResult(
                 markdown: cleanedMarkdown,
@@ -83,7 +96,7 @@ enum WeChatArticleExtractor {
                 suggestedTitle: article.title
             )
         } catch {
-            if let result = try? await extractWithBundledWXScript(url: url) {
+            if let result = try? await extractWithBundledWXScript(url: url, options: options) {
                 return result
             }
             throw error
@@ -97,7 +110,7 @@ enum WeChatArticleExtractor {
             .filter { line in
                 guard !line.isEmpty else { return false }
                 guard !["×", "：", "，", "。", ";", "；", ":"].contains(line) else { return false }
-                return !noiseKeywords.contains { line.contains($0) }
+                return !isNoiseLine(line)
             }
             .joined(separator: "\n\n")
             .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
@@ -105,31 +118,13 @@ enum WeChatArticleExtractor {
     }
 
     private static func fetchHTML(from url: URL) async throws -> String {
-        var request = URLRequest(url: url)
-        request.setValue(mobileUserAgent, forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 20
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw NSError(
-                domain: "WeChatArticleExtractor",
-                code: http.statusCode,
-                userInfo: [NSLocalizedDescriptionKey: "公众号页面访问失败（HTTP \(http.statusCode)）。"]
-            )
-        }
-
-        guard let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .unicode) else {
-            throw NSError(
-                domain: "WeChatArticleExtractor",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "无法读取公众号页面内容。"]
-            )
-        }
-
-        return html
+        try await WeChatHTMLLoader.shared.load(url: url, userAgent: mobileUserAgent)
     }
 
-    private static func extractWithBundledWXScript(url: URL) async throws -> AIDocumentExtractionResult? {
+    private static func extractWithBundledWXScript(
+        url: URL,
+        options: AIDocumentExtractionOptions
+    ) async throws -> AIDocumentExtractionResult? {
         guard let scriptPath = Bundle.main.url(forResource: "wechat_article_reader_plus", withExtension: "py")?.path else { return nil }
 
         let runtime = try await ManagedMarkItDownRuntime.shared.prepare()
@@ -148,7 +143,7 @@ enum WeChatArticleExtractor {
                 scriptPath,
                 url.absoluteString,
                 "--format", "markdown",
-                "--ocr", "always",
+                "--ocr", options.performOCR ? "always" : "off",
                 "--max-ocr-images", "0",
                 "--output", outputURL.path
             ]
@@ -359,15 +354,8 @@ enum WeChatArticleExtractor {
     }
 
     private static func extractBodyHTML(from page: String) -> String {
-        let primaryPattern = #"<div[^>]+id=["']js_content["'][^>]*>(.*?)</div>\s*<script"#
-        if let regex = try? NSRegularExpression(pattern: primaryPattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) {
-            let range = NSRange(page.startIndex..<page.endIndex, in: page)
-            if let match = regex.firstMatch(in: page, options: [], range: range),
-               match.numberOfRanges > 1,
-               let capture = Range(match.range(at: 1), in: page)
-            {
-                return String(page[capture])
-            }
+        if let balancedBody = balancedDivBody(in: page, id: "js_content") {
+            return balancedBody
         }
 
         let contentRange =
@@ -394,6 +382,35 @@ enum WeChatArticleExtractor {
         }
 
         return body
+    }
+
+    private static func balancedDivBody(in page: String, id: String) -> String? {
+        let escapedID = NSRegularExpression.escapedPattern(for: id)
+        let openingPattern = #"<div\b[^>]*\bid\s*=\s*["']\#(escapedID)["'][^>]*>"#
+        guard let openingRange = page.range(of: openingPattern, options: [.regularExpression, .caseInsensitive]) else {
+            return nil
+        }
+
+        let bodyStart = openingRange.upperBound
+        guard let tagRegex = try? NSRegularExpression(pattern: #"</?div\b[^>]*>"#, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let searchRange = NSRange(bodyStart..<page.endIndex, in: page)
+        var depth = 1
+
+        for match in tagRegex.matches(in: page, range: searchRange) {
+            guard let tagRange = Range(match.range, in: page) else { continue }
+            let tag = page[tagRange]
+            if tag.dropFirst().first == "/" {
+                depth -= 1
+                if depth == 0 {
+                    return String(page[bodyStart..<tagRange.lowerBound])
+                }
+            } else {
+                depth += 1
+            }
+        }
+        return nil
     }
 
     fileprivate static func cleanMarkdownBody(from bodyHTML: String) -> String {
@@ -431,7 +448,7 @@ enum WeChatArticleExtractor {
             .filter { line in
                 guard !line.isEmpty else { return false }
                 guard !["×", "：", "，", "。", ";", "；", ":"].contains(line) else { return false }
-                return !noiseKeywords.contains { line.contains($0) }
+                return !isNoiseLine(line)
             }
 
         return collapseMarkdownLines(cleanedLines)
@@ -591,7 +608,7 @@ enum WeChatArticleExtractor {
         return result
     }
 
-    fileprivate struct ParsedArticle {
+    fileprivate struct ParsedArticle: Sendable {
         let url: URL
         let title: String
         let author: String
@@ -611,6 +628,128 @@ enum WeChatArticleExtractor {
             sections.append(bodyMarkdown)
             return sections.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
         }
+    }
+
+    private static func isNoiseLine(_ line: String) -> Bool {
+        exactNoiseLabels.contains(line) || blockedPagePhrases.contains { line.contains($0) }
+    }
+}
+
+private actor WeChatHTMLLoader {
+    static let shared = WeChatHTMLLoader()
+
+    private struct CachedPage: Sendable {
+        let html: String
+        let storedAt: Date
+    }
+
+    private let session: URLSession
+    private var cache: [String: CachedPage] = [:]
+    private var pending: [String: Task<String, Error>] = [:]
+    private let cacheLifetime: TimeInterval = 300
+
+    init() {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.timeoutIntervalForRequest = 25
+        configuration.timeoutIntervalForResource = 40
+        configuration.httpMaximumConnectionsPerHost = 2
+        session = URLSession(configuration: configuration)
+    }
+
+    func load(url: URL, userAgent: String) async throws -> String {
+        let key = canonicalKey(for: url)
+        if let cached = cache[key], Date().timeIntervalSince(cached.storedAt) < cacheLifetime {
+            return cached.html
+        }
+        if let existing = pending[key] {
+            return try await existing.value
+        }
+
+        let session = session
+        let task = Task<String, Error> {
+            try await Self.requestWithRetry(url: url, userAgent: userAgent, session: session)
+        }
+        pending[key] = task
+
+        do {
+            let html = try await task.value
+            cache[key] = CachedPage(html: html, storedAt: Date())
+            pending[key] = nil
+            return html
+        } catch {
+            pending[key] = nil
+            throw error
+        }
+    }
+
+    private func canonicalKey(for url: URL) -> String {
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.fragment = nil
+        return components?.url?.absoluteString ?? url.absoluteString
+    }
+
+    private nonisolated static func requestWithRetry(
+        url: URL,
+        userAgent: String,
+        session: URLSession
+    ) async throws -> String {
+        var lastError: Error?
+
+        for attempt in 0..<3 {
+            do {
+                var request = URLRequest(
+                    url: url,
+                    cachePolicy: .reloadIgnoringLocalCacheData,
+                    timeoutInterval: 25
+                )
+                request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+                request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+                request.setValue("zh-CN,zh;q=0.9,en;q=0.7", forHTTPHeaderField: "Accept-Language")
+
+                let (data, response) = try await session.data(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    throw URLError(.badServerResponse)
+                }
+                guard (200...299).contains(http.statusCode) else {
+                    let error = NSError(
+                        domain: "WeChatArticleExtractor",
+                        code: http.statusCode,
+                        userInfo: [NSLocalizedDescriptionKey: "公众号页面访问失败（HTTP \(http.statusCode)）。"]
+                    )
+                    if http.statusCode == 408 || http.statusCode == 429 || http.statusCode >= 500 {
+                        throw error
+                    }
+                    throw NonRetryableError(underlying: error)
+                }
+
+                guard data.count >= 512,
+                      let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .unicode)
+                else {
+                    throw URLError(.cannotDecodeContentData)
+                }
+                if html.contains("访问过于频繁") || html.contains("完成验证后即可继续访问") {
+                    throw NSError(
+                        domain: "WeChatArticleExtractor",
+                        code: 429,
+                        userInfo: [NSLocalizedDescriptionKey: "公众号访问触发频率限制，已自动重试。"]
+                    )
+                }
+                return html
+            } catch let error as NonRetryableError {
+                throw error.underlying
+            } catch {
+                lastError = error
+                guard attempt < 2 else { break }
+                try await Task.sleep(for: .milliseconds(500 * (1 << attempt)))
+            }
+        }
+
+        throw lastError ?? URLError(.unknown)
+    }
+
+    private struct NonRetryableError: Error {
+        let underlying: Error
     }
 }
 

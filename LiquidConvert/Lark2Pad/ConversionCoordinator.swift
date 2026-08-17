@@ -182,9 +182,17 @@ final class ConversionCoordinator: ObservableObject {
             statusMessage = "正在执行 Markdown 转换…"
             let markdown = try await engine.replaceImagesAndConvert(replacements)
 
+            // 后台计算生成的 Raw HTML 与 Preview HTML
+            let (rendered, raw) = await Task.detached(priority: .userInitiated) {
+                (
+                    EtherpadExporter.buildRenderedHTML(from: markdown),
+                    EtherpadExporter.buildRawHTML(from: markdown)
+                )
+            }.value
+
             markdownResult = markdown
-            previewHTML = EtherpadExporter.buildRenderedHTML(from: markdown)
-            etherpadHTML = EtherpadExporter.buildRawHTML(from: markdown)
+            previewHTML = rendered
+            etherpadHTML = raw
             
             // Transition to rendering phase (waiting for WebView)
             statusMessage = "正在渲染预览…"
@@ -306,9 +314,16 @@ final class ConversionCoordinator: ObservableObject {
         // Step 4: 将 ![alt](url) 转换为 <img> 标签，与旧版 TurndownEngine keepImages 输出一致
         let normalizedMarkdown = convertMarkdownImagesToHTML(finalMarkdown)
 
+        let (rendered, raw) = await Task.detached(priority: .userInitiated) {
+            (
+                EtherpadExporter.buildRenderedHTML(from: normalizedMarkdown),
+                EtherpadExporter.buildRawHTML(from: normalizedMarkdown)
+            )
+        }.value
+
         markdownResult = normalizedMarkdown
-        previewHTML = EtherpadExporter.buildRenderedHTML(from: normalizedMarkdown)
-        etherpadHTML = EtherpadExporter.buildRawHTML(from: normalizedMarkdown)
+        previewHTML = rendered
+        etherpadHTML = raw
 
         Lark2PadHistoryManager.shared.saveItem(
             title: "",

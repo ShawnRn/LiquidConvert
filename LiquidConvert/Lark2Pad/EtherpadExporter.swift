@@ -400,6 +400,13 @@ enum EtherpadExporter {
             let line = rawLines[i]
             let trimmed = line.trimmingCharacters(in: .whitespaces)
 
+            // Strip freestanding editor-image-source wrapper tags to prevent HTML escaping pollution
+            let lowerTrimmed = trimmed.lowercased()
+            if lowerTrimmed == "<div class=\"editor-image-source\">" || lowerTrimmed == "</div>" {
+                i += 1
+                continue
+            }
+
             let imgHTML = sanitizedImageTag(from: line) ?? parseStandaloneImageTag(line)
             if let imgHTML {
                 let currentSrc = firstAttribute("src", in: imgHTML)?.components(separatedBy: "?").first
@@ -413,21 +420,12 @@ enum EtherpadExporter {
 
                 result += imgHTML
 
-                // Look ahead for caption, bypassing intermediate empty lines
-                var nextIdx = i + 1
-                while nextIdx < rawLines.count && rawLines[nextIdx].trimmingCharacters(in: .whitespaces).isEmpty {
-                    nextIdx += 1
-                }
-
-                if nextIdx < rawLines.count {
-                    let nextTrimmed = rawLines[nextIdx].trimmingCharacters(in: .whitespaces)
-                    if isCaptionText(nextTrimmed) {
-                        let caption = normalizeCaptionText(nextTrimmed)
-                        let captionStyle = "display: block; width: 100%; font-family: PingFangSC-Regular; font-size: 12px; color: rgb(167, 167, 167); text-align: center;"
-                        result += "\n<span class=\"image-caption\" data-image-caption=\"true\" style=\"\(captionStyle)\">\(htmlEscaped(caption))</span><br>\n"
-                        i = nextIdx + 1
-                        continue
-                    }
+                // Look ahead for caption (supporting text lines or editor-image-source div blocks)
+                if let (caption, nextIdx) = findCaptionText(startingAt: i + 1, in: rawLines) {
+                    let captionStyle = "display: block; width: 100%; font-family: PingFangSC-Regular; font-size: 12px; color: rgb(167, 167, 167); text-align: center;"
+                    result += "\n<span class=\"image-caption\" data-image-caption=\"true\" style=\"\(captionStyle)\">\(htmlEscaped(caption))</span><br>\n"
+                    i = nextIdx
+                    continue
                 }
 
                 result += "<br>\n"
@@ -452,6 +450,54 @@ enum EtherpadExporter {
         }
 
         return result
+    }
+
+    private static func findCaptionText(startingAt index: Int, in lines: [String]) -> (caption: String, nextIndex: Int)? {
+        var scanIdx = index
+        var insideEditorImageSource = false
+
+        while scanIdx < lines.count {
+            let line = lines[scanIdx]
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.isEmpty {
+                scanIdx += 1
+                continue
+            }
+
+            let lower = trimmed.lowercased()
+            if lower.contains("editor-image-source") {
+                insideEditorImageSource = true
+                scanIdx += 1
+                continue
+            }
+
+            if lower == "</div>" && insideEditorImageSource {
+                scanIdx += 1
+                continue
+            }
+
+            if isCaptionText(trimmed) {
+                let caption = normalizeCaptionText(trimmed)
+                var nextIdx = scanIdx + 1
+                if insideEditorImageSource {
+                    // Consume any following empty lines or closing </div>
+                    while nextIdx < lines.count {
+                        let nTrimmed = lines[nextIdx].trimmingCharacters(in: .whitespaces)
+                        if nTrimmed.isEmpty || nTrimmed.lowercased() == "</div>" {
+                            nextIdx += 1
+                        } else {
+                            break
+                        }
+                    }
+                }
+                return (caption, nextIdx)
+            } else {
+                // Encountered non-caption text line
+                return nil
+            }
+        }
+        return nil
     }
 
     private static func htmlEscaped(_ text: String) -> String {

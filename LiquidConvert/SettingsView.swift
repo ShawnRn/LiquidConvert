@@ -35,6 +35,7 @@ struct SettingsView: View {
     @AppStorage("user_signature") private var userSignature = "介绍一下你自己..." // 个性签名
     @AppStorage("use_custom_avatar") private var useCustomAvatar = false
     @AppStorage("avatar_timestamp") private var avatarTimestamp: Double = 0
+    @State private var loadedAvatarImage: NSImage?
     @State private var avatarRefreshID = UUID()
     @State private var hoverReset = false
     @State private var isAvatarHovered = false // 🔥 头像悬浮状态
@@ -75,13 +76,12 @@ struct SettingsView: View {
                         HStack(spacing: 20) {
                             // Avatar ZStack
                             ZStack {
-                                if useCustomAvatar, let nsImage = getCustomAvatarImage() {
+                                if useCustomAvatar, let nsImage = loadedAvatarImage {
                                     Image(nsImage: nsImage)
                                         .resizable()
                                         .scaledToFill()
                                         .frame(width: 80, height: 80)
                                         .clipShape(Circle())
-                                        .id(avatarRefreshID)
                                 } else {
                                     Circle()
                                         .fill(LinearGradient(colors: defaultGradient, startPoint: .topLeading, endPoint: .bottomTrailing))
@@ -315,6 +315,12 @@ struct SettingsView: View {
         .onTapGesture {
             focusedField = nil
         }
+        .task(id: avatarRefreshID) {
+            reloadAvatarImage()
+        }
+        .onAppear {
+            reloadAvatarImage()
+        }
     }
 
     // 头像逻辑支持
@@ -323,11 +329,22 @@ struct SettingsView: View {
             .appendingPathComponent("custom_avatar.png")
     }
     
-    private func getCustomAvatarImage() -> NSImage? {
-        guard let url = getAvatarURL(), FileManager.default.fileExists(atPath: url.path) else {
-            return nil
+    private func reloadAvatarImage() {
+        guard useCustomAvatar, let url = getAvatarURL() else {
+            loadedAvatarImage = nil
+            return
         }
-        return NSImage(contentsOfFile: url.path)
+        let path = url.path
+        Task.detached(priority: .userInitiated) {
+            guard FileManager.default.fileExists(atPath: path),
+                  let img = NSImage(contentsOfFile: path) else {
+                await MainActor.run { loadedAvatarImage = nil }
+                return
+            }
+            await MainActor.run {
+                loadedAvatarImage = img
+            }
+        }
     }
     
     private func selectCustomAvatar() {
@@ -372,6 +389,7 @@ struct SettingsView: View {
                     useCustomAvatar = true
                     avatarTimestamp = Date().timeIntervalSince1970
                     avatarRefreshID = UUID()
+                    reloadAvatarImage()
                 }
             }
         }
@@ -380,6 +398,7 @@ struct SettingsView: View {
     private func removeCustomAvatarFile() {
         if let url = getAvatarURL() { try? FileManager.default.removeItem(at: url) }
         avatarTimestamp = Date().timeIntervalSince1970
+        loadedAvatarImage = nil
     }
     
     private func resetAllSettings() {

@@ -166,12 +166,31 @@ function loadHtmlAndGetImages(htmlStr) {
         // 检查非滑动卡片容器内紧邻的完全相同 src 图片重复
         let isInsideSlider = img.closest('[class*="slider"], [data-type*="slider"], [class*="gallery"]');
         if (!isInsideSlider) {
-            let prev = img.previousElementSibling;
-            if (prev && prev.tagName && prev.tagName.toLowerCase() === 'img') {
-                let prevSrc = (prev.getAttribute('src') || '').split('?')[0];
-                if (prevSrc === cleanSrc) {
-                    img.remove();
-                    return;
+            let prevNode = img.previousElementSibling;
+            while (prevNode) {
+                let tagName = (prevNode.tagName || '').toLowerCase();
+                if (tagName === 'img') {
+                    let prevSrc = (prevNode.getAttribute('src') || '').split('?')[0];
+                    if (prevSrc === cleanSrc) {
+                        img.remove();
+                        return;
+                    }
+                    break;
+                }
+                let innerImg = prevNode.querySelector ? prevNode.querySelector('img') : null;
+                if (innerImg) {
+                    let innerSrc = (innerImg.getAttribute('src') || '').split('?')[0];
+                    if (innerSrc === cleanSrc) {
+                        img.remove();
+                        return;
+                    }
+                    break;
+                }
+                let className = (prevNode.className || '').toString().toLowerCase();
+                if (className.includes('editor-image-source') || className.includes('caption') || tagName === 'figcaption' || tagName === 'p' || tagName === 'div') {
+                    prevNode = prevNode.previousElementSibling;
+                } else {
+                    break;
                 }
             }
             seenSrcs.add(cleanSrc);

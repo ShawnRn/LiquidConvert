@@ -44,11 +44,25 @@ final class AIDocumentExtractViewModel: ObservableObject {
     @Published var isImporting = false
     @Published var isPreparingRuntime = false
     @Published var isExtracting = false
-    @Published var globalMessage = "支持 PDF、Word、Excel、PPT、HTML、文本、图片与网页链接，图片会直接 OCR。"
+    @Published var isBatchExtracting = false
+    @Published var performOCR: Bool {
+        didSet { UserDefaults.standard.set(performOCR, forKey: Self.performOCRDefaultsKey) }
+    }
+    @Published var globalMessage = "支持 PDF、Word、Excel、PPT、HTML、文本、图片与网页链接。"
     @Published var historyRecords: [AIDocumentHistoryRecord] = []
 
     private let runtime = ManagedMarkItDownRuntime.shared
     private let historyManager = AIDocumentExtractHistoryManager.shared
+    private static let performOCRDefaultsKey = "aiDocumentExtraction.performOCR"
+
+    init() {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: Self.performOCRDefaultsKey) == nil {
+            performOCR = true
+        } else {
+            performOCR = defaults.bool(forKey: Self.performOCRDefaultsKey)
+        }
+    }
 
     var selectedItem: AIDocumentExtractItem? {
         guard let selectedItemID else { return nil }
@@ -81,6 +95,10 @@ final class AIDocumentExtractViewModel: ObservableObject {
 
     var canExportSelection: Bool {
         selectedItem != nil && !selectedMarkdown.isEmpty
+    }
+
+    var canExportAll: Bool {
+        !markdownResults.isEmpty && !isExtracting
     }
 
     func prepareRuntimeIfNeeded() {
@@ -174,8 +192,9 @@ final class AIDocumentExtractViewModel: ObservableObject {
         }
         let pasteboard = NSPasteboard.general
         let raw = pasteboard.string(forType: .string) ?? ""
-        guard let item = enqueueLink(raw, invalidMessage: "剪贴板里没有可识别的网页链接。") else { return }
-        extract(items: [item])
+        let newItems = enqueueLinks(raw, invalidMessage: "剪贴板里没有可识别的网页链接。")
+        guard !newItems.isEmpty else { return }
+        extract(items: newItems)
     }
 
     func openSelectedOriginal() {
@@ -249,6 +268,49 @@ final class AIDocumentExtractViewModel: ObservableObject {
         }
     }
 
+    func exportAllMarkdown() {
+        let completedItems = items.filter { markdownResults[$0.id]?.isEmpty == false }
+        guard !completedItems.isEmpty else {
+            globalMessage = "当前没有可批量导出的 Markdown。"
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.title = "选择批量导出目录"
+        panel.prompt = "导出全部"
+        guard panel.runModal() == .OK, let directory = panel.url else { return }
+
+        var usedNames = Set<String>()
+        var exportedCount = 0
+        var failures: [String] = []
+
+        for item in completedItems {
+            guard let markdown = markdownResults[item.id] else { continue }
+            do {
+                _ = try AIDocumentMarkdownExporter.export(
+                    markdown: markdown,
+                    source: item.source,
+                    suggestedTitle: suggestedTitles[item.id] ?? markdownTitle(from: markdown),
+                    to: directory,
+                    reserving: &usedNames
+                )
+                exportedCount += 1
+            } catch {
+                failures.append("\(item.title)：\(error.localizedDescription)")
+            }
+        }
+
+        if failures.isEmpty {
+            globalMessage = "已将 \(exportedCount) 篇 Markdown 批量导出到 \(directory.lastPathComponent)。"
+        } else {
+            globalMessage = "已导出 \(exportedCount) 篇，\(failures.count) 篇失败：\(failures.first ?? "未知错误")"
+        }
+    }
+
     private func enqueueLink(_ rawValue: String, invalidMessage: String = "请输入有效的 http/https 链接。") -> AIDocumentExtractItem? {
         guard let normalized = normalizeLink(rawValue) else {
             globalMessage = invalidMessage
@@ -259,12 +321,22 @@ final class AIDocumentExtractViewModel: ObservableObject {
         return append(items: [AIDocumentExtractItem(source: .link(normalized))]).first
     }
 
+    private func enqueueLinks(_ rawValue: String, invalidMessage: String) -> [AIDocumentExtractItem] {
+        let urls = detectedLinks(in: rawValue)
+        guard !urls.isEmpty else {
+            globalMessage = invalidMessage
+            return []
+        }
+        draftLink = urls.first?.absoluteString ?? ""
+        return append(items: urls.map { AIDocumentExtractItem(source: .link($0)) })
+    }
+
     @discardableResult
     private func append(items newItems: [AIDocumentExtractItem]) -> [AIDocumentExtractItem] {
         guard !newItems.isEmpty else { return [] }
 
-        let existingSignatures = Set(items.map(\.subtitle))
-        let filtered = newItems.filter { !existingSignatures.contains($0.subtitle) }
+        var signatures = Set(items.map(\.subtitle))
+        let filtered = newItems.filter { signatures.insert($0.subtitle).inserted }
         guard !filtered.isEmpty else {
             globalMessage = "这些项目已经在队列中了。"
             return []
@@ -300,26 +372,57 @@ final class AIDocumentExtractViewModel: ObservableObject {
         return url
     }
 
+    private func detectedLinks(in rawValue: String) -> [URL] {
+        let fullRange = NSRange(rawValue.startIndex..<rawValue.endIndex, in: rawValue)
+        let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        let detected = detector?.matches(in: rawValue, range: fullRange).compactMap { match -> URL? in
+            guard let url = match.url,
+                  let scheme = url.scheme?.lowercased(),
+                  scheme == "http" || scheme == "https"
+            else { return nil }
+            return url
+        } ?? []
+
+        if !detected.isEmpty {
+            var seen = Set<String>()
+            return detected.filter { seen.insert($0.absoluteString).inserted }
+        }
+        return normalizeLink(rawValue).map { [$0] } ?? []
+    }
+
     func extract(items extractionItems: [AIDocumentExtractItem]) {
         guard !extractionItems.isEmpty else { return }
         guard !isExtracting else { return }
 
         isExtracting = true
+        isBatchExtracting = extractionItems.count > 1
         globalMessage = "正在提取 Markdown，请稍候…"
+        let extractionOptions = AIDocumentExtractionOptions(performOCR: performOCR)
 
         Task {
-            defer { isExtracting = false }
+            defer {
+                isExtracting = false
+                isBatchExtracting = false
+            }
 
-            for item in extractionItems {
+            var completedCount = 0
+            var failedCount = 0
+
+            for (index, item) in extractionItems.enumerated() {
                 selectedItemID = item.id
-                itemStatuses[item.id] = "准备运行环境…"
+                itemStatuses[item.id] = extractionItems.count > 1
+                    ? "批处理中 \(index + 1)/\(extractionItems.count)…"
+                    : "准备运行环境…"
                 runtimeStatus = "正在准备 AI 文档提取运行环境…"
 
                 do {
                     itemStatuses[item.id] = "正在提取内容…"
                     runtimeStatus = "正在调用 MarkItDown 提取内容…"
                     let progressSink = AIDocumentExtractionProgressSink(viewModel: self, itemID: item.id)
-                    let result = try await runtime.extract(source: item.source) { message in
+                    let result = try await runtime.extract(
+                        source: item.source,
+                        options: extractionOptions
+                    ) { message in
                         progressSink.update(message)
                     }
 
@@ -330,12 +433,18 @@ final class AIDocumentExtractViewModel: ObservableObject {
                     runtimeStatus = "运行环境已就绪"
                     globalMessage = "已完成 \(item.title) 的 Markdown 提取。"
                     saveToHistory(item: item, markdown: result.markdown)
+                    completedCount += 1
                 } catch {
                     itemStatuses[item.id] = "提取失败"
                     let message = error.localizedDescription
                     itemErrors[item.id] = message
                     globalMessage = message
+                    failedCount += 1
                 }
+            }
+
+            if extractionItems.count > 1 {
+                globalMessage = "批处理完成：成功 \(completedCount) 项，失败 \(failedCount) 项。可从「批处理」菜单导出全部 Markdown。"
             }
         }
     }
@@ -439,6 +548,7 @@ struct AIDocumentExtractView: View {
             resultSheet
         }
         .onChange(of: viewModel.selectedStatus) { _, newValue in
+            guard !viewModel.isBatchExtracting else { return }
             guard newValue == "提取完成" || newValue == "提取失败" else { return }
             showResultSheet = true
         }
@@ -476,7 +586,7 @@ struct AIDocumentExtractView: View {
                     Text("AI 文档提取")
                         .font(.title2.weight(.bold))
 
-                    Text("点击读取 clipboard，或直接拖入支持的文件格式开始提取。")
+                    Text("点击读取剪贴板，或直接拖入支持的文件格式开始提取。")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -492,20 +602,63 @@ struct AIDocumentExtractView: View {
             }
             .frame(maxWidth: .infinity)
 
-            Button {
-                viewModel.loadHistory()
-                showHistoryPopover.toggle()
-            } label: {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 32, height: 32)
-                    .background(Circle().fill(.primary.opacity(0.06)))
+            HStack(spacing: 10) {
+                Menu {
+                    Toggle("启用图片 OCR", isOn: $viewModel.performOCR)
+                        .disabled(viewModel.isExtracting)
+
+                    Text(viewModel.performOCR ? "会识别图片文字，处理耗时较长" : "已跳过图片 OCR，纯图片文件无法提取")
+
+                    Divider()
+
+                    Button("从剪贴板批量导入链接") {
+                        viewModel.addClipboardLinkAndExtract()
+                    }
+                    .keyboardShortcut("v", modifiers: .command)
+                    .disabled(viewModel.isExtracting)
+
+                    Button("批量导入文件…") {
+                        viewModel.isImporting = true
+                    }
+                    .disabled(viewModel.isExtracting)
+
+                    Button("批量处理全部项目") {
+                        viewModel.extractAll()
+                    }
+                    .disabled(viewModel.items.isEmpty || viewModel.isExtracting)
+
+                    Button("批量导出全部 Markdown…") {
+                        viewModel.exportAllMarkdown()
+                    }
+                    .disabled(!viewModel.canExportAll)
+                } label: {
+                    Label("批处理", systemImage: "square.stack.3d.up")
+                        .font(.system(size: 12, weight: .medium))
+                        .padding(.horizontal, 11)
+                        .frame(height: 32)
+                        .background(Capsule().fill(.primary.opacity(0.06)))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+
+                Spacer()
+
+                Button {
+                    viewModel.loadHistory()
+                    showHistoryPopover.toggle()
+                } label: {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(.primary.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $showHistoryPopover) {
+                    historySheetContent
+                }
             }
-            .buttonStyle(.plain)
-            .sheet(isPresented: $showHistoryPopover) {
-                historySheetContent
-            }
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -748,7 +901,6 @@ struct AIDocumentExtractView: View {
             .background(Capsule().fill(.primary.opacity(0.05)))
         }
         .buttonStyle(.plain)
-        .keyboardShortcut("v", modifiers: .command)
     }
 
     private var currentHeroIcon: String {
@@ -779,13 +931,13 @@ struct AIDocumentExtractView: View {
         if viewModel.isExtracting {
             return "正在解析并提取内容，此过程在本地运行…"
         }
-        return "自动解析剪贴板中的网页链接，拖入文件也会直接开始转换。"
+        return "自动解析剪贴板中的一个或多个网页链接，拖入文件也会直接开始转换。"
     }
 
     private var footerHint: some View {
         HStack(spacing: 6) {
             Image(systemName: "shield")
-            Text("提取过程在本地完成，结果会在二级结果窗口中查看。")
+            Text(viewModel.performOCR ? "图片 OCR 已开启；可在「批处理」菜单关闭以提升速度。" : "图片 OCR 已关闭，文章与文档提取会更快。")
         }
         .font(.system(size: 11))
         .foregroundStyle(.tertiary)

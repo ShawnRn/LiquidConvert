@@ -1,10 +1,10 @@
 import Foundation
 
-enum AIDocumentSource: Hashable {
+enum AIDocumentSource: Hashable, Sendable {
     case file(URL)
     case link(URL)
 
-    var displayName: String {
+    nonisolated var displayName: String {
         switch self {
         case .file(let url):
             return url.lastPathComponent
@@ -13,7 +13,7 @@ enum AIDocumentSource: Hashable {
         }
     }
 
-    var detailText: String {
+    nonisolated var detailText: String {
         switch self {
         case .file(let url):
             return url.path
@@ -35,11 +35,22 @@ struct AIDocumentExtractionResult {
     }
 }
 
+struct AIDocumentExtractionOptions: Sendable, Equatable {
+    nonisolated let performOCR: Bool
+
+    nonisolated init(performOCR: Bool) {
+        self.performOCR = performOCR
+    }
+
+    nonisolated static let standard = AIDocumentExtractionOptions(performOCR: true)
+    nonisolated static let withoutOCR = AIDocumentExtractionOptions(performOCR: false)
+}
+
 actor ManagedMarkItDownRuntime {
     static let shared = ManagedMarkItDownRuntime()
 
-    private let managedVersion = "markitdown-0.1.5-python-3.10"
-    private let packageSpec = "markitdown[pdf,docx,pptx,xlsx,xls]==0.1.5"
+    private let managedVersion = "markitdown-0.1.7-python-3.10"
+    private let packageSpec = "markitdown[pdf,docx,pptx,xlsx,xls]==0.1.7"
     private let minimumPythonVersion = PythonVersion(major: 3, minor: 10)
     private let standalonePythonRelease = "20260414"
     private let standalonePythonVersion = "3.10.20"
@@ -52,7 +63,7 @@ actor ManagedMarkItDownRuntime {
 
     func prepare(progress: (@Sendable (String) -> Void)? = nil) async throws -> RuntimeInfo {
         let rootDirectory = try runtimeRootDirectory()
-        let venvDirectory = rootDirectory.appendingPathComponent("venv", isDirectory: true)
+        let venvDirectory = rootDirectory.appendingPathComponent("venv-\(managedVersion)", isDirectory: true)
         let pythonExecutable = venvDirectory.appendingPathComponent("bin/python3")
         let cliExecutable = venvDirectory.appendingPathComponent("bin/markitdown")
         let versionMarker = rootDirectory.appendingPathComponent("managed-version.txt")
@@ -71,7 +82,7 @@ actor ManagedMarkItDownRuntime {
         }
 
         progress?("正在准备 AI 文档提取运行环境…")
-        try recreateRuntimeDirectory(at: rootDirectory)
+        try prepareVersionedEnvironment(rootDirectory: rootDirectory, venvDirectory: venvDirectory)
 
         let systemPython = try await locateCompatiblePython(
             rootDirectory: rootDirectory,
@@ -109,9 +120,17 @@ actor ManagedMarkItDownRuntime {
 
     func extract(
         source: AIDocumentSource,
+        options: AIDocumentExtractionOptions = .standard,
         progress: (@Sendable (String) -> Void)? = nil
     ) async throws -> AIDocumentExtractionResult {
         if case .file(let url) = source, ImageOCRService.canHandleFile(url) {
+            guard options.performOCR else {
+                throw NSError(
+                    domain: "ManagedMarkItDownRuntime",
+                    code: -5,
+                    userInfo: [NSLocalizedDescriptionKey: "当前已关闭 OCR，无法提取纯图片文件。请开启 OCR 后重试。"]
+                )
+            }
             progress?("正在 OCR 图片文本…")
             let text = try await ImageOCRService.recognizeText(inFile: url)
             let markdown = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -137,14 +156,22 @@ actor ManagedMarkItDownRuntime {
                 } else {
                     progress?("正在提取公众号正文（CLI 专用路径）…")
                 }
-                return try await WeChatArticleExtractor.extractWithoutRendering(from: url, progress: progress)
+                return try await WeChatArticleExtractor.extractWithoutRendering(
+                    from: url,
+                    options: options,
+                    progress: progress
+                )
             } else {
                 if url.host?.lowercased().contains("weibo") == true {
                     progress?("正在提取微博正文…")
                 } else {
                     progress?("正在提取公众号正文…")
                 }
-                return try await WeChatArticleExtractor.extract(from: url, progress: progress)
+                return try await WeChatArticleExtractor.extract(
+                    from: url,
+                    options: options,
+                    progress: progress
+                )
             }
         }
 
@@ -193,11 +220,13 @@ actor ManagedMarkItDownRuntime {
             )
         }
 
-        markdown = await MarkdownImageOCRIntegrator.insertOCRIfNeeded(
-            into: markdown,
-            source: source,
-            progress: progress
-        )
+        if options.performOCR {
+            markdown = await MarkdownImageOCRIntegrator.insertOCRIfNeeded(
+                into: markdown,
+                source: source,
+                progress: progress
+            )
+        }
 
         return AIDocumentExtractionResult(markdown: markdown, source: source)
     }
@@ -217,12 +246,12 @@ actor ManagedMarkItDownRuntime {
             .appendingPathComponent(bundleName, isDirectory: true)
     }
 
-    private func recreateRuntimeDirectory(at url: URL) throws {
+    private func prepareVersionedEnvironment(rootDirectory: URL, venvDirectory: URL) throws {
         let fm = FileManager.default
-        if fm.fileExists(atPath: url.path) {
-            try fm.removeItem(at: url)
+        try fm.createDirectory(at: rootDirectory, withIntermediateDirectories: true, attributes: nil)
+        if fm.fileExists(atPath: venvDirectory.path) {
+            try fm.removeItem(at: venvDirectory)
         }
-        try fm.createDirectory(at: url, withIntermediateDirectories: true, attributes: nil)
     }
 
     private func locateCompatiblePython(
@@ -230,6 +259,12 @@ actor ManagedMarkItDownRuntime {
         progress: (@Sendable (String) -> Void)?
     ) async throws -> URL {
         let fm = FileManager.default
+        let existingRuntimeDirectory = rootDirectory.appendingPathComponent("python-runtime", isDirectory: true)
+        if let bundledPython = findStandalonePython(in: existingRuntimeDirectory),
+           (try? pythonVersion(for: bundledPython))?.isAtLeast(minimumPythonVersion) == true {
+            return bundledPython
+        }
+
         let candidates = [
             "/opt/homebrew/bin/python3",
             "/usr/local/bin/python3",

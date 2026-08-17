@@ -43,11 +43,13 @@ final class Lark2PadHistoryManager: ObservableObject {
     @AppStorage("lark2pad_custom_history_folder") var customFolderPath: String = ""
 
     private init() {
-        loadAndPruneHistory()
+        Task {
+            await loadAndPruneHistoryAsync()
+        }
     }
 
-    /// Default iCloud or local storage folder path.
-    var currentFolderURL: URL {
+    /// Default iCloud or local storage folder path resolved safely.
+    private nonisolated static func resolveFolderURL(customFolderPath: String) -> URL {
         if !customFolderPath.isEmpty {
             let url = URL(fileURLWithPath: customFolderPath)
             if FileManager.default.fileExists(atPath: url.path) {
@@ -67,6 +69,10 @@ final class Lark2PadHistoryManager: ObservableObject {
         return localURL
     }
 
+    var currentFolderURL: URL {
+        Self.resolveFolderURL(customFolderPath: customFolderPath)
+    }
+
     /// Save a new conversion item and prune entries older than 30 days.
     func saveItem(title: String, markdown: String, wechatHTML: String, wordpressHTML: String) {
         let cleanTitle = extractTitle(from: markdown, fallback: title)
@@ -79,7 +85,7 @@ final class Lark2PadHistoryManager: ObservableObject {
 
         historyItems.insert(item, at: 0)
         pruneOldItems()
-        persistItems()
+        persistItemsAsync()
     }
 
     /// Manually select a custom history folder (e.g. in iCloud).
@@ -94,43 +100,60 @@ final class Lark2PadHistoryManager: ObservableObject {
 
         if panel.runModal() == .OK, let url = panel.url {
             customFolderPath = url.path
-            loadAndPruneHistory()
+            Task {
+                await loadAndPruneHistoryAsync()
+            }
         }
     }
 
     /// Reset to default folder.
     func resetToDefaultFolder() {
         customFolderPath = ""
-        loadAndPruneHistory()
+        Task {
+            await loadAndPruneHistoryAsync()
+        }
     }
 
     /// Delete a specific history item.
     func deleteItem(_ item: Lark2PadHistoryItem) {
         historyItems.removeAll { $0.id == item.id }
-        persistItems()
+        persistItemsAsync()
     }
 
     /// Clear all history.
     func clearAll() {
         historyItems.removeAll()
-        persistItems()
+        persistItemsAsync()
     }
 
     // MARK: - Private Logic
 
-    private func loadAndPruneHistory() {
-        let folder = currentFolderURL
-        let fileURL = folder.appendingPathComponent("history_index.json")
+    private func loadAndPruneHistoryAsync() async {
+        let customPath = self.customFolderPath
+        let items = await Task.detached(priority: .userInitiated) { () -> [Lark2PadHistoryItem] in
+            let folder = Self.resolveFolderURL(customFolderPath: customPath)
+            let fileURL = folder.appendingPathComponent("history_index.json")
 
-        guard FileManager.default.fileExists(atPath: fileURL.path),
-              let data = try? Data(contentsOf: fileURL),
-              let items = try? JSONDecoder().decode([Lark2PadHistoryItem].self, from: data) else {
-            historyItems = []
-            return
-        }
+            guard FileManager.default.fileExists(atPath: fileURL.path),
+                  let data = try? Data(contentsOf: fileURL),
+                  let loadedItems = try? JSONDecoder().decode([Lark2PadHistoryItem].self, from: data) else {
+                return []
+            }
+
+            let calendar = Calendar.current
+            let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date().addingTimeInterval(-30 * 86400)
+            let validItems = loadedItems.filter { $0.date >= thirtyDaysAgo }
+            let pruned = validItems.count != loadedItems.count
+            
+            if pruned {
+                if let data = try? JSONEncoder().encode(validItems) {
+                    try? data.write(to: fileURL, options: .atomic)
+                }
+            }
+            return validItems
+        }.value
 
         self.historyItems = items
-        pruneOldItems()
     }
 
     private func pruneOldItems() {
@@ -139,17 +162,21 @@ final class Lark2PadHistoryManager: ObservableObject {
         let beforeCount = historyItems.count
         historyItems.removeAll { $0.date < thirtyDaysAgo }
         if historyItems.count != beforeCount {
-            persistItems()
+            persistItemsAsync()
         }
     }
 
-    private func persistItems() {
-        let folder = currentFolderURL
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let fileURL = folder.appendingPathComponent("history_index.json")
+    private func persistItemsAsync() {
+        let itemsToSave = historyItems
+        let customPath = customFolderPath
+        Task.detached(priority: .utility) {
+            let folder = Self.resolveFolderURL(customFolderPath: customPath)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let fileURL = folder.appendingPathComponent("history_index.json")
 
-        if let data = try? JSONEncoder().encode(historyItems) {
-            try? data.write(to: fileURL, options: .atomic)
+            if let data = try? JSONEncoder().encode(itemsToSave) {
+                try? data.write(to: fileURL, options: .atomic)
+            }
         }
     }
 

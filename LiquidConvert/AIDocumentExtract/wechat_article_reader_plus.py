@@ -11,13 +11,12 @@ import os
 import re
 import subprocess
 import sys
-import html
 import tempfile
 import time
 import urllib.parse
 import urllib.request
 
-from wechat_article_reader import fetch_html, extract_article, UA
+from wechat_article_reader import UA, extract_article, extract_js_content, fetch_html
 
 IMG_PATTERNS = [
     re.compile(r'<img[^>]+data-src="([^"]+)"', re.I),
@@ -27,12 +26,12 @@ IMG_PATTERNS = [
 
 
 def extract_images(page: str) -> list:
-    m = re.search(r'<div[^>]+id="js_content"[^>]*>(.*?)</div>\s*<script', page, re.S)
-    body = m.group(1) if m else page
+    body = extract_js_content(page)
+    search_scope = body or page
     urls = []
     seen = set()
     for pat in IMG_PATTERNS:
-        for u in pat.findall(body):
+        for u in pat.findall(search_scope):
             u = html.unescape(u).replace('&amp;', '&').strip()
             if u.startswith('//'):
                 u = 'https:' + u
@@ -41,8 +40,12 @@ def extract_images(page: str) -> list:
                 seen.add(u)
                 urls.append(u)
                 
-    # Extract WeChat Picture Post (图文动态) images
-    pic_post_imgs = re.findall(r"cdn_url:\s*(?:JsDecode\()?['\"](https?://[^'\"]+(?:qpic\.cn)[^'\"]*)['\"]", page)
+    # 图文动态通常没有正文 img；仅在正文没有图片时读取页面脚本里的 cdn_url，
+    # 避免把普通文章页脚、推荐区和预加载资源误当成正文图片。
+    pic_post_imgs = [] if urls else re.findall(
+        r"cdn_url:\s*(?:JsDecode\()?['\"](https?://[^'\"]+(?:qpic\.cn)[^'\"]*)['\"]",
+        page,
+    )
     for u in pic_post_imgs:
         u = html.unescape(u).replace('&amp;', '&').replace('\\x26amp;', '&').replace('\\x26', '&').strip()
         if u not in seen:
@@ -381,8 +384,8 @@ def main() -> None:
             for img_url in imgs:
                 article['markdown'] += f"\n\n![]({img_url})\n\n"
         else:
-            article = extract_article(args.url)
             page = fetch_html(args.url)
+            article = extract_article(args.url, page=page)
             imgs = extract_images(page)
             
             # For WeChat Image Posts, images are not embedded in article['markdown']
