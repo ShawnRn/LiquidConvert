@@ -28,6 +28,14 @@ function initTurndown() {
     const gfm = turndownPluginGfm.gfm;
     turndownService.use(gfm);
 
+    // 飞书复制出来的内容本身已经是结构化 HTML。Turndown 默认会为了
+    // Markdown 源码安全转义 `>、#、-` 等字符，导致引用和标题变成
+    // `\\>`、`\\#`，再同步到 Pad 时反斜杠会被当成正文显示。
+    // 这里保留文本中的原始字符，把结构识别交给 Turndown 的规则处理。
+    turndownService.escape = function (string) {
+        return string;
+    };
+
     // 针对 Etherpad 的定制图文规则
     turndownService.addRule('keepImages', {
         filter: 'img',

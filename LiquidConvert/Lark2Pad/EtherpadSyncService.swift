@@ -38,7 +38,13 @@ enum EtherpadSyncService {
     private static let syncedPadIDsKey = "lark2pad_synced_pad_ids"
 
     static func sync(markdown: String, html: String, preferredPadID: String? = nil) async throws -> SyncResult {
-        let trimmedHTML = html.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 同步必须和“复制 Etherpad 格式”使用同一份导出结果。
+        // html 参数保留用于兼容旧调用方，但不再作为第二个内容来源，避免
+        // markdown 已更新而传入的 HTML 仍是旧内容，导致两种操作结果不一致。
+        _ = html
+        let trimmedHTML = EtherpadExporter
+            .buildRawHTML(from: markdown)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedHTML.isEmpty else {
             throw SyncError.emptyDocument
         }
