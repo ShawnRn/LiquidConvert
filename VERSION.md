@@ -23,8 +23,8 @@ LiquidConvert 使用**语义化版本号** (Semantic Versioning) 系统：
 ### 当前版本
 
 - **Marketing Version**: `3.5.2`
-- **Build Number**: `2026081702`
-- **完整版本**: `3.5.2 (2026081702)`
+- **Build Number**: `2026081801`
+- **完整版本**: `3.5.2 (2026081801)`
 
 ---
 

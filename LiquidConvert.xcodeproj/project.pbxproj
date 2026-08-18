@@ -7,19 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		38C8446299C2692BA29CF7C0 /* wechat_article_reader.py in Sources */ = {isa = PBXBuildFile; fileRef = 010E4AEC830BDBFD0F99E1E2 /* wechat_article_reader.py */; };
-		3EDC4E5AA1937493E3661AF1 /* wechat_article_reader_plus.py in Sources */ = {isa = PBXBuildFile; fileRef = 631C4018825F93D64ED2AB64 /* wechat_article_reader_plus.py */; };
 		462659C32F362CF200BBBE9F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 462659C22F362CF200BBBE9F /* Sparkle */; };
-		9D8448A7B09737532A9C73E4 /* wechat_article_reader.py in Sources */ = {isa = PBXBuildFile; fileRef = E57147398E80ACF883E1A5A2 /* wechat_article_reader.py */; };
-		F18D4D699B73A07766C2C4C9 /* wechat_article_reader_plus.py in Sources */ = {isa = PBXBuildFile; fileRef = 957F4491B52E5D041B1CC5AF /* wechat_article_reader_plus.py */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		010E4AEC830BDBFD0F99E1E2 /* wechat_article_reader.py */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.python; name = wechat_article_reader.py; path = LiquidConvert/AIDocumentExtract/wechat_article_reader.py; sourceTree = SOURCE_ROOT; };
 		46A8690F2EDE727400D61126 /* LiquidConvert.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LiquidConvert.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		631C4018825F93D64ED2AB64 /* wechat_article_reader_plus.py */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.python; name = wechat_article_reader_plus.py; path = LiquidConvert/AIDocumentExtract/wechat_article_reader_plus.py; sourceTree = SOURCE_ROOT; };
-		957F4491B52E5D041B1CC5AF /* wechat_article_reader_plus.py */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.python; name = wechat_article_reader_plus.py; path = LiquidConvert/AIDocumentExtract/wechat_article_reader_plus.py; sourceTree = SOURCE_ROOT; };
-		E57147398E80ACF883E1A5A2 /* wechat_article_reader.py */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.python; name = wechat_article_reader.py; path = LiquidConvert/AIDocumentExtract/wechat_article_reader.py; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -53,10 +45,6 @@
 			children = (
 				46A869112EDE727400D61126 /* LiquidConvert */,
 				46A869102EDE727400D61126 /* Products */,
-				010E4AEC830BDBFD0F99E1E2 /* wechat_article_reader.py */,
-				631C4018825F93D64ED2AB64 /* wechat_article_reader_plus.py */,
-				E57147398E80ACF883E1A5A2 /* wechat_article_reader.py */,
-				957F4491B52E5D041B1CC5AF /* wechat_article_reader_plus.py */,
 			);
 			sourceTree = "<group>";
 		};
@@ -148,10 +136,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				38C8446299C2692BA29CF7C0 /* wechat_article_reader.py in Sources */,
-				3EDC4E5AA1937493E3661AF1 /* wechat_article_reader_plus.py in Sources */,
-				9D8448A7B09737532A9C73E4 /* wechat_article_reader.py in Sources */,
-				F18D4D699B73A07766C2C4C9 /* wechat_article_reader_plus.py in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -289,7 +273,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026081702;
+				CURRENT_PROJECT_VERSION = 2026081801;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
@@ -323,7 +307,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026081702;
+				CURRENT_PROJECT_VERSION = 2026081801;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;

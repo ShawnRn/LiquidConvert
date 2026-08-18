@@ -849,9 +849,23 @@ private final class WeChatRenderedPageReader: NSObject, WKNavigationDelegate {
         return webView
     }
 
-    private func waitForNavigation() async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            navigationContinuation = continuation
+    private func waitForNavigation(timeout: TimeInterval = 15) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor in
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    self.navigationContinuation = continuation
+                }
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(timeout))
+                throw NSError(
+                    domain: "WeChatArticleExtractor",
+                    code: -24,
+                    userInfo: [NSLocalizedDescriptionKey: "页面加载超时（\(Int(timeout)) 秒）。"]
+                )
+            }
+            try await group.next()
+            group.cancelAll()
         }
     }
 
