@@ -52,6 +52,7 @@ final class AIDocumentExtractViewModel: ObservableObject {
     @Published var globalMessage = "支持 PDF、Word、Excel、PPT、HTML、文本、图片与网页链接。"
     @Published var historyRecords: [AIDocumentHistoryRecord] = []
 
+    private var currentExtractionTask: Task<Void, Never>?
     private let runtime = ManagedMarkItDownRuntime.shared
     private let historyManager = AIDocumentExtractHistoryManager.shared
     private static let performOCRDefaultsKey = "aiDocumentExtraction.performOCR"
@@ -249,6 +250,7 @@ final class AIDocumentExtractViewModel: ObservableObject {
     }
 
     func clearAll() {
+        cancelExtraction()
         items.removeAll()
         markdownResults.removeAll()
         suggestedTitles.removeAll()
@@ -269,6 +271,23 @@ final class AIDocumentExtractViewModel: ObservableObject {
 
     func retry(item: AIDocumentExtractItem) {
         extract(items: [item])
+    }
+
+    func cancelExtraction() {
+        guard isExtracting else { return }
+        currentExtractionTask?.cancel()
+        currentExtractionTask = nil
+        isExtracting = false
+        isBatchExtracting = false
+        runtimeStatus = "已停止提取"
+        globalMessage = "已手动停止提取任务。"
+
+        for item in items {
+            let status = itemStatuses[item.id] ?? ""
+            if status != "提取完成" && !status.contains("失败") {
+                itemStatuses[item.id] = "已停止"
+            }
+        }
     }
 
     func copySelectedMarkdown() {
@@ -435,16 +454,18 @@ final class AIDocumentExtractViewModel: ObservableObject {
         globalMessage = "正在提取 Markdown，请稍候…"
         let extractionOptions = AIDocumentExtractionOptions(performOCR: performOCR)
 
-        Task {
+        currentExtractionTask = Task {
             defer {
                 isExtracting = false
                 isBatchExtracting = false
+                currentExtractionTask = nil
             }
 
             var completedCount = 0
             var failedCount = 0
 
             for (index, item) in extractionItems.enumerated() {
+                if Task.isCancelled { break }
                 selectedItemID = item.id
                 itemStatuses[item.id] = extractionItems.count > 1
                     ? "批处理中 (\(index + 1)/\(extractionItems.count))…"
@@ -452,6 +473,7 @@ final class AIDocumentExtractViewModel: ObservableObject {
                 runtimeStatus = "正在准备 AI 文档提取运行环境…"
 
                 do {
+                    if Task.isCancelled { break }
                     itemStatuses[item.id] = "正在提取内容…"
                     runtimeStatus = "正在提取内容…"
                     let progressSink = AIDocumentExtractionProgressSink(viewModel: self, itemID: item.id)
@@ -459,8 +481,12 @@ final class AIDocumentExtractViewModel: ObservableObject {
                         source: item.source,
                         options: extractionOptions
                     ) { message in
-                        progressSink.update(message)
+                        if !Task.isCancelled {
+                            progressSink.update(message)
+                        }
                     }
+
+                    if Task.isCancelled { break }
 
                     markdownResults[item.id] = result.markdown
                     suggestedTitles[item.id] = result.suggestedTitle
@@ -471,12 +497,20 @@ final class AIDocumentExtractViewModel: ObservableObject {
                     saveToHistory(item: item, markdown: result.markdown)
                     completedCount += 1
                 } catch {
+                    if Task.isCancelled {
+                        itemStatuses[item.id] = "已停止"
+                        break
+                    }
                     itemStatuses[item.id] = "提取失败"
                     let message = error.localizedDescription
                     itemErrors[item.id] = message
                     globalMessage = message
                     failedCount += 1
                 }
+            }
+
+            if Task.isCancelled {
+                return
             }
 
             // Select the first successfully completed item, or first item
@@ -526,6 +560,7 @@ final class AIDocumentExtractViewModel: ObservableObject {
 private final class AIDocumentExtractionProgressSink: @unchecked Sendable {
     nonisolated(unsafe) private weak var viewModel: AIDocumentExtractViewModel?
     nonisolated private let itemID: UUID
+    nonisolated(unsafe) private var lastUpdateTime: TimeInterval = 0
 
     @MainActor
     init(viewModel: AIDocumentExtractViewModel, itemID: UUID) {
@@ -534,9 +569,15 @@ private final class AIDocumentExtractionProgressSink: @unchecked Sendable {
     }
 
     nonisolated func update(_ message: String) {
+        let now = ProcessInfo.processInfo.systemUptime
+        if now - lastUpdateTime < 0.12 && !message.contains("完成") && !message.contains("失败") && !message.contains("已就绪") {
+            return
+        }
+        lastUpdateTime = now
         Task { @MainActor [weak viewModel, itemID] in
-            viewModel?.itemStatuses[itemID] = message
-            viewModel?.runtimeStatus = message
+            guard let viewModel = viewModel, viewModel.isExtracting else { return }
+            viewModel.itemStatuses[itemID] = message
+            viewModel.runtimeStatus = message
         }
     }
 }
@@ -654,6 +695,15 @@ struct AIDocumentExtractView: View {
                     Text(viewModel.performOCR ? "会识别图片文字，处理耗时较长" : "已跳过图片 OCR，纯图片文件无法提取")
 
                     Divider()
+
+                    if viewModel.isExtracting {
+                        Button(role: .destructive) {
+                            viewModel.cancelExtraction()
+                        } label: {
+                            Label("停止当前提取任务", systemImage: "stop.circle.fill")
+                        }
+                        Divider()
+                    }
 
                     Button("从剪贴板批量导入链接") {
                         viewModel.addClipboardLinkAndExtract()
@@ -781,7 +831,7 @@ struct AIDocumentExtractView: View {
     private func queueCard(height: CGFloat) -> some View {
         VStack(spacing: 0) {
             // Queue Toolbar
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Image(systemName: "list.bullet.rectangle.portrait")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.blue)
@@ -797,7 +847,33 @@ struct AIDocumentExtractView: View {
 
                 Spacer()
 
-                if !viewModel.isExtracting {
+                if viewModel.isExtracting {
+                    ProgressView()
+                        .controlSize(.small)
+
+                    Text("正在提取中…")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+
+                    Button(role: .destructive) {
+                        viewModel.cancelExtraction()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 9))
+                            Text("停止")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .controlSize(.small)
+
+                    Button("查看结果") {
+                        viewModel.showResultSheet = true
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                } else {
                     Button("从剪贴板添加") {
                         viewModel.addClipboardLinkAndExtract()
                     }
@@ -823,12 +899,6 @@ struct AIDocumentExtractView: View {
                     .foregroundStyle(.red)
                     .font(.system(size: 11))
                     .padding(.leading, 4)
-                } else {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("正在提取中…")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
                 }
             }
             .padding(.horizontal, 16)
@@ -837,13 +907,15 @@ struct AIDocumentExtractView: View {
 
             Divider()
 
-            // Queue List
+            // Optimized Stable Queue List (No layout shifting)
             ScrollView {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 6) {
                     ForEach(viewModel.items) { item in
                         AIDocumentQueueRow(
-                            item: item,
-                            suggestedTitle: viewModel.suggestedTitles[item.id],
+                            id: item.id,
+                            title: viewModel.suggestedTitles[item.id] ?? item.title,
+                            subtitle: item.subtitle,
+                            source: item.source,
                             status: viewModel.itemStatuses[item.id] ?? "等待中",
                             isSelected: item.id == viewModel.selectedItemID,
                             isExtracting: viewModel.isExtracting,
@@ -861,9 +933,10 @@ struct AIDocumentExtractView: View {
                                 viewModel.remove(item: item)
                             }
                         )
+                        .equatable()
                     }
                 }
-                .padding(14)
+                .padding(12)
             }
 
             Divider()
@@ -1071,9 +1144,13 @@ struct AIDocumentExtractView: View {
                                                 Image(systemName: "exclamationmark.circle.fill")
                                                     .font(.system(size: 13))
                                                     .foregroundStyle(item.id == viewModel.selectedItemID ? .white : .red)
-                                            } else if status.contains("提取") || status.contains("处理") || status.contains("环境") {
+                                            } else if status != "等待提取" && status != "已停止" && (status.contains("提取") || status.contains("处理") || status.contains("环境") || status.contains("OCR")) {
                                                 ProgressView()
                                                     .controlSize(.mini)
+                                            } else if status == "已停止" {
+                                                Image(systemName: "stop.circle")
+                                                    .font(.system(size: 12))
+                                                    .foregroundStyle(item.id == viewModel.selectedItemID ? .white.opacity(0.8) : .orange)
                                             } else {
                                                 Image(systemName: "clock")
                                                     .font(.system(size: 12))
@@ -1136,6 +1213,20 @@ struct AIDocumentExtractView: View {
 
                 Spacer()
 
+                if viewModel.isExtracting {
+                    Button(role: .destructive) {
+                        viewModel.cancelExtraction()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 9))
+                            Text("停止提取")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                }
+
                 Button("完成") {
                     viewModel.showResultSheet = false
                 }
@@ -1181,6 +1272,16 @@ struct AIDocumentExtractView: View {
                         Text(viewModel.selectedStatus)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+
+                        Button(role: .destructive) {
+                            viewModel.cancelExtraction()
+                        } label: {
+                            Text("停止当前任务")
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                        .controlSize(.small)
+                        .padding(.top, 6)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(24)
@@ -1486,12 +1587,11 @@ struct AIDocumentExtractView: View {
     }
 }
 
-private struct AIDocumentQueueRow: View {
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var isHovered = false
-
-    let item: AIDocumentExtractItem
-    let suggestedTitle: String?
+private struct AIDocumentQueueRow: View, Equatable {
+    let id: UUID
+    let title: String
+    let subtitle: String
+    let source: AIDocumentSource
     let status: String
     let isSelected: Bool
     let isExtracting: Bool
@@ -1500,32 +1600,47 @@ private struct AIDocumentQueueRow: View {
     let onRetry: () -> Void
     let onDelete: () -> Void
 
+    static func == (lhs: AIDocumentQueueRow, rhs: AIDocumentQueueRow) -> Bool {
+        lhs.id == rhs.id &&
+        lhs.title == rhs.title &&
+        lhs.subtitle == rhs.subtitle &&
+        lhs.status == rhs.status &&
+        lhs.isSelected == rhs.isSelected &&
+        lhs.isExtracting == rhs.isExtracting
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: iconName)
-                .font(.system(size: 16))
+                .font(.system(size: 15))
                 .foregroundStyle(iconColor)
-                .frame(width: 24)
+                .frame(width: 22)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(displayTitle)
+                Text(title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                Text(item.subtitle)
+                Text(subtitle)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            // Status Badge
-            HStack(spacing: 6) {
-                if status.contains("提取") || status.contains("处理") || status.contains("环境") {
+            // Status Badge - Fixed and stable layout, no shifting!
+            HStack(spacing: 5) {
+                if isActivelyProcessing {
                     ProgressView()
                         .controlSize(.mini)
+                } else if isSuccess {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                } else if isFailed {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
                 }
                 Text(status)
                     .font(.system(size: 11, weight: .medium))
@@ -1533,57 +1648,75 @@ private struct AIDocumentQueueRow: View {
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
-            .background(statusColor.opacity(0.12))
-            .clipShape(Capsule())
+            .background(statusColor.opacity(0.12), in: Capsule())
 
-            // Row Action buttons
-            if isHovered || isSelected {
-                HStack(spacing: 6) {
-                    if status.contains("失败") && !isExtracting {
-                        Button(action: onRetry) {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 12))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.blue)
-                        .help("重新提取")
+            // Fixed slot for action button (so layout NEVER shifts on hover or state change)
+            Group {
+                if isFailed && !isExtracting {
+                    Button(action: onRetry) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11))
                     }
-
-                    if !isExtracting {
-                        Button(action: onDelete) {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 11, weight: .medium))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .help("从队列移除")
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.blue)
+                    .help("重新提取")
+                    .frame(width: 16)
+                } else if !isExtracting {
+                    Button(action: onDelete) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .semibold))
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary.opacity(0.6))
+                    .help("从队列移除")
+                    .frame(width: 16)
+                } else {
+                    Spacer().frame(width: 16)
                 }
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 9)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(rowBackgroundColor)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.14) : Color(nsColor: .controlBackgroundColor).opacity(0.6))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(rowBorderColor, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(isSelected ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.06), lineWidth: 1)
         )
-        .shadow(color: rowShadowColor, radius: isSelected ? 8 : 4, x: 0, y: 2)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onTapGesture(count: 2, perform: onDoubleClick)
-        .onHover { isHovered = $0 }
+        .contextMenu {
+            if isFailed {
+                Button("重新提取", action: onRetry)
+            }
+            Button("查看结果", action: onDoubleClick)
+            Divider()
+            Button("从队列移除", role: .destructive, action: onDelete)
+                .disabled(isExtracting)
+        }
     }
 
-    private var displayTitle: String {
-        suggestedTitle ?? item.title
+    private var isActivelyProcessing: Bool {
+        status != "提取完成" &&
+        status != "等待提取" &&
+        status != "已停止" &&
+        !status.contains("失败") &&
+        (status.contains("提取") || status.contains("处理") || status.contains("环境") || status.contains("OCR") || status.contains("准备"))
+    }
+
+    private var isSuccess: Bool {
+        status == "提取完成"
+    }
+
+    private var isFailed: Bool {
+        status.contains("失败")
     }
 
     private var iconName: String {
-        switch item.source {
+        switch source {
         case .file:
             return "doc.text"
         case .link(let url) where (url.host ?? "").contains("mp.weixin.qq.com") || (url.host ?? "").contains("weibo.com") || (url.host ?? "").contains("weibo.cn"):
@@ -1594,7 +1727,7 @@ private struct AIDocumentQueueRow: View {
     }
 
     private var iconColor: Color {
-        switch item.source {
+        switch source {
         case .file:
             return .purple
         case .link(let url) where (url.host ?? "").contains("mp.weixin.qq.com"):
@@ -1607,35 +1740,18 @@ private struct AIDocumentQueueRow: View {
     }
 
     private var statusColor: Color {
-        if status.contains("失败") {
+        if isFailed {
             return .red
         }
-        if status == "提取完成" {
+        if isSuccess {
             return .green
         }
-        if status.contains("提取") || status.contains("处理") || status.contains("环境") {
+        if isActivelyProcessing {
             return .blue
         }
+        if status == "已停止" {
+            return .orange
+        }
         return .secondary
-    }
-
-    private var rowBackgroundColor: Color {
-        if isSelected {
-            return Color.accentColor.opacity(colorScheme == .dark ? 0.20 : 0.10)
-        }
-        return colorScheme == .dark
-        ? Color(nsColor: .controlBackgroundColor).opacity(0.66)
-        : Color(nsColor: .textBackgroundColor)
-    }
-
-    private var rowBorderColor: Color {
-        if isSelected {
-            return Color.accentColor.opacity(colorScheme == .dark ? 0.40 : 0.25)
-        }
-        return Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.05)
-    }
-
-    private var rowShadowColor: Color {
-        Color.black.opacity(colorScheme == .dark ? (isSelected ? 0.24 : 0.12) : (isSelected ? 0.08 : 0.03))
     }
 }
