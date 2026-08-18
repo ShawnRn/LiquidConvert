@@ -34,13 +34,15 @@ enum MarkdownImageOCRIntegrator {
         progress?("正在 OCR 文档图片 0/\(references.count)…")
 
         for (referenceIndex, reference) in references.enumerated() {
+            if Task.isCancelled { break }
             let statusSuffix = failedCount > 0 ? "（\(failedCount) 张失败）" : ""
             progress?("正在 OCR 文档图片 \(referenceIndex + 1)/\(references.count)…\(statusSuffix)")
 
             // Throttle requests to mmbiz CDN to avoid rate limiting.
             if referenceIndex > 0, isMmbizDestination(reference.destination) {
-                try? await Task.sleep(for: .milliseconds(350))
+                try? await Task.sleep(for: .milliseconds(200))
             }
+            if Task.isCancelled { break }
 
             do {
                 guard let image = try await imageForReference(
@@ -51,6 +53,8 @@ enum MarkdownImageOCRIntegrator {
                 ) else {
                     continue
                 }
+
+                if Task.isCancelled { break }
 
                 let text = try await ImageOCRService.recognizeText(
                     in: image.data,
@@ -156,22 +160,34 @@ enum MarkdownImageOCRIntegrator {
 
         var lastError: Error?
         for candidate in candidates {
-            for attempt in 0..<3 {
+            for attempt in 0..<2 {
+                if Task.isCancelled {
+                    throw NSError(domain: "MarkdownImageOCRIntegrator", code: -999, userInfo: [NSLocalizedDescriptionKey: "任务已取消。"])
+                }
                 do {
                     var request = URLRequest(url: candidate)
-                    request.timeoutInterval = 30
+                    request.timeoutInterval = 6.0
                     request.setValue(genericUserAgent, forHTTPHeaderField: "User-Agent")
                     if isMmbiz {
                         request.setValue("https://mp.weixin.qq.com/", forHTTPHeaderField: "Referer")
                     }
 
                     let (data, response) = try await URLSession.shared.data(for: request)
-                    if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                        throw NSError(
-                            domain: "MarkdownImageOCRIntegrator",
-                            code: http.statusCode,
-                            userInfo: [NSLocalizedDescriptionKey: "图片下载失败（HTTP \(http.statusCode)，\(candidate.lastPathComponent)）。"]
-                        )
+                    if let http = response as? HTTPURLResponse {
+                        if http.statusCode == 403 || http.statusCode == 404 || http.statusCode == 410 {
+                            throw NSError(
+                                domain: "MarkdownImageOCRIntegrator",
+                                code: http.statusCode,
+                                userInfo: [NSLocalizedDescriptionKey: "图片访问受限或不存在（HTTP \(http.statusCode)）。"]
+                            )
+                        }
+                        if !(200...299).contains(http.statusCode) {
+                            throw NSError(
+                                domain: "MarkdownImageOCRIntegrator",
+                                code: http.statusCode,
+                                userInfo: [NSLocalizedDescriptionKey: "图片下载失败（HTTP \(http.statusCode)）。"]
+                            )
+                        }
                     }
 
                     // Validate that the response is actual image data, not an HTML error page.
@@ -179,7 +195,7 @@ enum MarkdownImageOCRIntegrator {
                         throw NSError(
                             domain: "MarkdownImageOCRIntegrator",
                             code: -21,
-                            userInfo: [NSLocalizedDescriptionKey: "图片数据过小（\(data.count) bytes），可能被 CDN 拒绝。"]
+                            userInfo: [NSLocalizedDescriptionKey: "图片数据过小（\(data.count) bytes）。"]
                         )
                     }
 
@@ -191,13 +207,14 @@ enum MarkdownImageOCRIntegrator {
                         )
                     }
 
-                    print("[AI Document OCR] downloaded \(candidate.lastPathComponent): \(data.count) bytes")
                     return data
                 } catch {
                     lastError = error
-                    // Increase backoff for mmbiz CDN to respect rate limits.
-                    let delay = isMmbiz ? 800 * (attempt + 1) : 400 * (attempt + 1)
-                    try await Task.sleep(for: .milliseconds(delay))
+                    if (error as NSError).code == 403 || (error as NSError).code == 404 {
+                        break // Do not retry fatal HTTP errors
+                    }
+                    let delay = isMmbiz ? 400 * (attempt + 1) : 200 * (attempt + 1)
+                    try? await Task.sleep(for: .milliseconds(delay))
                 }
             }
         }
