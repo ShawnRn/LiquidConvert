@@ -31,6 +31,78 @@ private enum AIDocumentFileTypes {
     ]
 }
 
+struct AIDocumentToast: Identifiable, Equatable {
+    let id = UUID()
+    let title: String
+    let message: String
+    let isSuccess: Bool
+    let actionURL: URL?
+}
+
+enum WebPageFastTitleFetcher {
+    static func fetchTitle(for url: URL) async -> String? {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 4.0
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, (200...399).contains(httpResponse.statusCode) else {
+                return nil
+            }
+            let prefixData = data.prefix(131072) // 128KB is plenty for head tags
+            guard let html = String(data: prefixData, encoding: .utf8)
+                ?? String(data: prefixData, encoding: .utf16)
+                ?? String(data: prefixData, encoding: .ascii)
+            else {
+                return nil
+            }
+
+            // 1. WeChat specific or og:title: <meta property="og:title" content="..." /> or <meta content="..." property="og:title" />
+            let ogPatterns = [
+                #"<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']"#,
+                #"<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']"#,
+                #"<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']+)["']"#,
+                #"<meta[^>]*content=["']([^"']+)["'][^>]*name=["']twitter:title["']"#
+            ]
+            for pattern in ogPatterns {
+                if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+                   let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..<html.endIndex, in: html)),
+                   let range = Range(match.range(at: 1), in: html) {
+                    let title = decodeHTMLEntities(String(html[range])).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !title.isEmpty { return title }
+                }
+            }
+
+            // 2. <title>...</title>
+            if let regex = try? NSRegularExpression(pattern: #"<title[^>]*>(.*?)</title>"#, options: [.caseInsensitive, .dotMatchesLineSeparators]),
+               let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..<html.endIndex, in: html)),
+               let range = Range(match.range(at: 1), in: html) {
+                let rawTitle = decodeHTMLEntities(String(html[range]))
+                    .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !rawTitle.isEmpty { return rawTitle }
+            }
+
+            return nil
+        } catch {
+            return nil
+        }
+    }
+
+    private static func decodeHTMLEntities(_ text: String) -> String {
+        var str = text
+        str = str.replacingOccurrences(of: "&quot;", with: "\"")
+        str = str.replacingOccurrences(of: "&apos;", with: "'")
+        str = str.replacingOccurrences(of: "&amp;", with: "&")
+        str = str.replacingOccurrences(of: "&lt;", with: "<")
+        str = str.replacingOccurrences(of: "&gt;", with: ">")
+        str = str.replacingOccurrences(of: "&#39;", with: "'")
+        str = str.replacingOccurrences(of: "&nbsp;", with: " ")
+        return str
+    }
+}
+
 @MainActor
 final class AIDocumentExtractViewModel: ObservableObject {
     @Published var items: [AIDocumentExtractItem] = []
@@ -46,6 +118,7 @@ final class AIDocumentExtractViewModel: ObservableObject {
     @Published var isExtracting = false
     @Published var isBatchExtracting = false
     @Published var showResultSheet = false
+    @Published var toast: AIDocumentToast?
     @Published var performOCR: Bool {
         didSet { UserDefaults.standard.set(performOCR, forKey: Self.performOCRDefaultsKey) }
     }
@@ -290,12 +363,29 @@ final class AIDocumentExtractViewModel: ObservableObject {
         }
     }
 
+    func showToast(title: String, message: String, isSuccess: Bool = true, actionURL: URL? = nil) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            toast = AIDocumentToast(title: title, message: message, isSuccess: isSuccess, actionURL: actionURL)
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(4.0))
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    if self.toast?.title == title {
+                        self.toast = nil
+                    }
+                }
+            }
+        }
+    }
+
     func copySelectedMarkdown() {
         guard !selectedMarkdown.isEmpty else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(selectedMarkdown, forType: .string)
         globalMessage = "Markdown 已复制到剪贴板。"
+        showToast(title: "已复制", message: "Markdown 内容已复制到剪贴板。")
     }
 
     func exportSelectedMarkdown() {
@@ -313,8 +403,10 @@ final class AIDocumentExtractViewModel: ObservableObject {
         do {
             try selectedMarkdown.write(to: url, atomically: true, encoding: .utf8)
             globalMessage = "Markdown 已导出到 \(url.lastPathComponent)。"
+            showToast(title: "导出成功", message: "已保存到 \(url.lastPathComponent)", isSuccess: true, actionURL: url)
         } catch {
             globalMessage = "导出失败：\(error.localizedDescription)"
+            showToast(title: "导出失败", message: error.localizedDescription, isSuccess: false)
         }
     }
 
@@ -322,6 +414,7 @@ final class AIDocumentExtractViewModel: ObservableObject {
         let completedItems = items.filter { markdownResults[$0.id]?.isEmpty == false }
         guard !completedItems.isEmpty else {
             globalMessage = "当前没有可批量导出的 Markdown。"
+            showToast(title: "无导出内容", message: "当前没有已完成提取的 Markdown。", isSuccess: false)
             return
         }
 
@@ -331,8 +424,20 @@ final class AIDocumentExtractViewModel: ObservableObject {
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.title = "选择批量导出目录"
-        panel.prompt = "导出全部"
-        guard panel.runModal() == .OK, let directory = panel.url else { return }
+        panel.prompt = "导出到此目录"
+        guard panel.runModal() == .OK, let baseDirectory = panel.url else { return }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
+        let subfolderName = "AI提取导出_\(dateFormatter.string(from: Date()))"
+        let subfolderURL = baseDirectory.appendingPathComponent(subfolderName, isDirectory: true)
+
+        do {
+            try FileManager.default.createDirectory(at: subfolderURL, withIntermediateDirectories: true)
+        } catch {
+            showToast(title: "创建目录失败", message: error.localizedDescription, isSuccess: false)
+            return
+        }
 
         var usedNames = Set<String>()
         var exportedCount = 0
@@ -345,7 +450,7 @@ final class AIDocumentExtractViewModel: ObservableObject {
                     markdown: markdown,
                     source: item.source,
                     suggestedTitle: suggestedTitles[item.id] ?? markdownTitle(from: markdown),
-                    to: directory,
+                    to: subfolderURL,
                     reserving: &usedNames
                 )
                 exportedCount += 1
@@ -355,9 +460,13 @@ final class AIDocumentExtractViewModel: ObservableObject {
         }
 
         if failures.isEmpty {
-            globalMessage = "已将 \(exportedCount) 篇 Markdown 批量导出到 \(directory.lastPathComponent)。"
+            let msg = "已将 \(exportedCount) 篇 Markdown 保存至「\(subfolderName)」子文件夹"
+            globalMessage = msg
+            showToast(title: "批量导出完成", message: msg, isSuccess: true, actionURL: subfolderURL)
         } else {
-            globalMessage = "已导出 \(exportedCount) 篇，\(failures.count) 篇失败：\(failures.first ?? "未知错误")"
+            let msg = "已导出 \(exportedCount) 篇至「\(subfolderName)」，\(failures.count) 篇失败。"
+            globalMessage = msg
+            showToast(title: "导出部分完成", message: msg, isSuccess: false, actionURL: subfolderURL)
         }
     }
 
@@ -388,6 +497,22 @@ final class AIDocumentExtractViewModel: ObservableObject {
             selectedItemID = filtered.first?.id
         }
         globalMessage = "已加入 \(filtered.count) 个待提取项目。"
+
+        // 优先快速异步读取网页/文章真实标题
+        for item in filtered {
+            if case .link(let url) = item.source {
+                Task {
+                    if let fastTitle = await WebPageFastTitleFetcher.fetchTitle(for: url) {
+                        await MainActor.run {
+                            if self.suggestedTitles[item.id] == nil {
+                                self.suggestedTitles[item.id] = fastTitle
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         return filtered
     }
 
@@ -640,10 +765,70 @@ struct AIDocumentExtractView: View {
         .sheet(item: $selectedHistoryRecord) { record in
             historyDetailSheet(record: record)
         }
+        .overlay(alignment: .top) {
+            if let toast = viewModel.toast {
+                toastBanner(toast: toast)
+                    .padding(.top, 14)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .zIndex(999)
+            }
+        }
         .task {
             viewModel.prepareRuntimeIfNeeded()
             viewModel.loadHistory()
         }
+    }
+
+    private func toastBanner(toast: AIDocumentToast) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: toast.isSuccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(toast.isSuccess ? .green : .orange)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(toast.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Text(toast.message)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            if let actionURL = toast.actionURL {
+                Button("在访达中显示") {
+                    NSWorkspace.shared.activateFileViewerSelecting([actionURL])
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .padding(.leading, 4)
+            }
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    viewModel.toast = nil
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(4)
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 2)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            Material.ultraThickMaterial,
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.18), radius: 14, x: 0, y: 6)
     }
 
     private var headerSection: some View {
