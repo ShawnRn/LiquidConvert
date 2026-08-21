@@ -48,6 +48,10 @@ final class ImageUploader {
         var result = html
         for (url, dataURI) in mapping {
             if !url.isEmpty && !dataURI.isEmpty {
+                // 如果是微信官方图床，不替换为 base64，避免公众号保存时识别异常或丢失
+                if url.contains("qpic.cn") || url.contains("weixin.qq.com") {
+                    continue
+                }
                 result = result.replacingOccurrences(of: url, with: dataURI)
             }
         }
@@ -70,6 +74,10 @@ final class ImageUploader {
         for match in matches {
             if match.numberOfRanges > 1 {
                 let urlStr = nsString.substring(with: match.range(at: 1))
+                // 跳过微信官方图床（mmbiz.qpic.cn / qpic.cn），因为微信官方图床链接原生支持，无需转换为 Base64，否则会导致保存时 data-src 丢失或被微信清理
+                if urlStr.contains("qpic.cn") || urlStr.contains("weixin.qq.com") {
+                    continue
+                }
                 let cached = await MainActor.run { getCachedDataURI(for: urlStr) }
                 if cached == nil {
                     urlsToFetch.insert(urlStr)

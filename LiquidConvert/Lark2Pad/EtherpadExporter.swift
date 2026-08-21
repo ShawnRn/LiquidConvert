@@ -786,14 +786,17 @@ enum EtherpadExporter {
     private static let defaultHeaderBannerURL = "https://mmbiz.qpic.cn/mmbiz_gif/fc90sFPPBCMNz9EtBfUDyjCYbZMtTTBiaUAWvglz5a8etUicmQFMtJn68NOxWbdRBgPTn3ic4tbT1MwKfzoV1P7m36Kmtm8QiaPQHr5jLkqa2Dw/640?wx_fmt=gif&from=appmsg"
 
     private static func buildHeaderBannerHTML(imgRadius: String) -> String {
-        "<section style=\"text-align: left;justify-content: flex-start;display: flex;flex-flow: row;margin: 0px 0px 24px 0px;width: 100%;align-self: flex-start;background-color: rgb(255, 113, 20);border-radius: 10px;overflow: hidden;box-sizing: border-box;\"><section style=\"text-align: center;line-height: 0;width: 100%;box-sizing: border-box;\"><section style=\"max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;\" nodeleaf=\"\"><img src=\"\(defaultHeaderBannerURL)\" class=\"rich_pages wxw-img\" data-ratio=\"0.5333333333333333\" data-type=\"gif\" data-w=\"720\" style=\"vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;\"></section></section></section>\n"
+        "<section style=\"text-align: left;justify-content: flex-start;display: flex;flex-flow: row;margin: 0px 0px 24px 0px;width: 100%;align-self: flex-start;background-color: rgb(255, 113, 20);border-radius: 10px;overflow: hidden;box-sizing: border-box;\"><section style=\"text-align: center;line-height: 0;width: 100%;box-sizing: border-box;\"><section style=\"max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;\"><img src=\"\(defaultHeaderBannerURL)\" data-src=\"\(defaultHeaderBannerURL)\" class=\"rich_pages wxw-img\" data-ratio=\"0.5333333333333333\" data-type=\"gif\" data-w=\"720\" style=\"vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;\"></section></section></section>\n"
     }
 
     private static let weChatFooterImagesHTML = """
-    <section style="text-align: center;line-height: 0;box-sizing: border-box;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;" nodeleaf=""><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCO5sTlJseFUfia8Hu5P9EWwc4YHFvbFXrYWWDVxISzy2Vl3HGU4ibnqLPR6U8BgFRGxhS86OwDH6OCMnIDr4UnyEhYy6dTib2qiaBA/640?wx_fmt=png" class="rich_pages wxw-img" data-ratio="0.05804" data-s="300,640" data-w="1051" style="vertical-align:middle;max-width:100%;width:100%;box-sizing:border-box;" width="100%"></section></section>
-    <p style="white-space: normal;margin: 0px;padding: 0px;box-sizing: border-box;"></p>
-    <section style="text-align: left;justify-content: flex-start;display: flex;flex-flow: row;box-sizing: border-box;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;background-repeat: repeat;background-attachment: scroll;border-radius: 10px;overflow: hidden;background-image: url(&quot;https://mmbiz.qpic.cn/mmbiz_png/fc90sFPPBCMRTjiay36FKj1KwiaibBpEPbK583nGuBnJjNNeR13rq3IA6sia1fzibcJKicGLZcIfTOVU00ATFq7mmDMSKd18TqTmZzT7EmGykuQbk/640?wx_fmt=png&quot;);box-sizing: border-box;background-position: 0% 0% !important;background-size: auto !important;"><section style="justify-content: flex-start;display: flex;flex-flow: row;margin: 50px 0px 0px;box-sizing: border-box;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;box-sizing: border-box;"><section style="text-align: center;line-height: 0;box-sizing: border-box;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;" nodeleaf=""><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCP8MG80wljJC4cT2s8YibQ2t5hoaVEAoIZ8ftGmllAI5ehMD28ExTwBdfsibfyOqZBmTyjhrdXklbqcCa3CeMiaAXdeyzjKY11lIE/640?wx_fmt=png" class="rich_pages wxw-img" data-ratio="0.6003805899143673" data-s="300,640" data-w="1051" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></section></section></section></section><section style="justify-content: flex-start;display: flex;flex-flow: row;box-sizing: border-box;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;box-sizing: border-box;"><section style="text-align: center;line-height: 0;box-sizing: border-box;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;"><a href="https://mp.weixin.qq.com/s?__biz=MjgzMTAwODI0MA==&amp;mid=2652396877&amp;idx=2&amp;sn=dfef25453a6bf0dca147b0adca3deaf7&amp;scene=21#wechat_redirect" target="_blank"><span style="width:100%" class="js_jump_icon h5_image_link"><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCPyDFWbJT8y9ibibmFbtvMJbwHxCAZQskte81K91q7QwkwXPevnDR7bvHUD9ntPN43bDibM6svwxrCkBaVruzvjKVBLnTwJYk5pOk/640?wx_fmt=png" class="rich_pages wxw-img" data-ratio="0.14367269267364416" data-s="300,640" data-w="1051" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></span></a></section></section><section style="text-align: justify;box-sizing: border-box;"><p style="white-space: normal;margin: 0px;padding: 0px;box-sizing: border-box;"></p></section></section></section></section></section>
-    <section style="text-align: center;line-height: 0;box-sizing: border-box;margin-top: 16px;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;border-radius: 10px;overflow: hidden;box-sizing: border-box;" nodeleaf=""><img src="https://mmbiz.qpic.cn/mmbiz_png/fc90sFPPBCNnChuCqY5TK78KORbHN3ficOaIgpjRfNqQWMJqRxxNGpMb2Om3ebIfpJGIs7nfu2WrCYzYjLkH6qicYms1ibfJbFujmoNFYaavpw/640?wx_fmt=png" class="rich_pages wxw-img" data-ratio="1.3333333333333333" data-s="300,640" data-w="1080" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></section></section>
+    <p style="white-space: normal;margin: 0px;padding: 0px;box-sizing: border-box;"><span leaf=""></span></p>
+    <section style="text-align: center;line-height: 0;box-sizing: border-box;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;" nodeleaf=""><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCO5sTlJseFUfia8Hu5P9EWwc4YHFvbFXrYWWDVxISzy2Vl3HGU4ibnqLPR6U8BgFRGxhS86OwDH6OCMnIDr4UnyEhYy6dTib2qiaBA/640?wx_fmt=png" data-src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCO5sTlJseFUfia8Hu5P9EWwc4YHFvbFXrYWWDVxISzy2Vl3HGU4ibnqLPR6U8BgFRGxhS86OwDH6OCMnIDr4UnyEhYy6dTib2qiaBA/640?wx_fmt=png" class="rich_pages wxw-img" data-ratio="0.05804" data-s="300,640" data-w="1051" data-type="png" style="vertical-align:middle;max-width:100%;width:100%;box-sizing:border-box;" width="100%"></section></section>
+    <p style="white-space: normal;margin: 0px;padding: 0px;box-sizing: border-box;"><span leaf=""></span></p>
+    <p style="white-space: normal;margin: 0px;padding: 0px;box-sizing: border-box;"><span leaf=""></span></p>
+    <section style="text-align: left;justify-content: flex-start;display: flex;flex-flow: row;box-sizing: border-box;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;background-repeat: repeat;background-attachment: scroll;border-radius: 10px;overflow: hidden;background-image: url(&quot;https://mmbiz.qpic.cn/mmbiz_png/fc90sFPPBCMRTjiay36FKj1KwiaibBpEPbK583nGuBnJjNNeR13rq3IA6sia1fzibcJKicGLZcIfTOVU00ATFq7mmDMSKd18TqTmZzT7EmGykuQbk/640?wx_fmt=png&quot;);box-sizing: border-box;background-position: 0% 0% !important;background-size: auto !important;"><section style="justify-content: flex-start;display: flex;flex-flow: row;margin: 50px 0px 0px;box-sizing: border-box;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;box-sizing: border-box;"><section style="text-align: center;line-height: 0;box-sizing: border-box;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;" nodeleaf=""><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCP8MG80wljJC4cT2s8YibQ2t5hoaVEAoIZ8ftGmllAI5ehMD28ExTwBdfsibfyOqZBmTyjhrdXklbqcCa3CeMiaAXdeyzjKY11lIE/640?wx_fmt=png" data-src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCP8MG80wljJC4cT2s8YibQ2t5hoaVEAoIZ8ftGmllAI5ehMD28ExTwBdfsibfyOqZBmTyjhrdXklbqcCa3CeMiaAXdeyzjKY11lIE/640?wx_fmt=png" class="rich_pages wxw-img" data-ratio="0.6003805899143673" data-s="300,640" data-w="1051" data-type="png" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></section></section></section></section><section style="justify-content: flex-start;display: flex;flex-flow: row;box-sizing: border-box;"><section style="display: inline-block;width: 100%;vertical-align: top;align-self: flex-start;flex: 0 0 auto;box-sizing: border-box;"><section style="text-align: center;line-height: 0;box-sizing: border-box;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;box-sizing: border-box;"><a href="https://mp.weixin.qq.com/s?__biz=MjgzMTAwODI0MA==&amp;mid=2652396877&amp;idx=2&amp;sn=dfef25453a6bf0dca147b0adca3deaf7&amp;scene=21#wechat_redirect" target="_blank"><span style="width:100%" class="js_jump_icon h5_image_link"><img src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCPyDFWbJT8y9ibibmFbtvMJbwHxCAZQskte81K91q7QwkwXPevnDR7bvHUD9ntPN43bDibM6svwxrCkBaVruzvjKVBLnTwJYk5pOk/640?wx_fmt=png" data-src="https://mmbiz.qpic.cn/sz_mmbiz_png/fc90sFPPBCPyDFWbJT8y9ibibmFbtvMJbwHxCAZQskte81K91q7QwkwXPevnDR7bvHUD9ntPN43bDibM6svwxrCkBaVruzvjKVBLnTwJYk5pOk/640?wx_fmt=png" class="rich_pages wxw-img" data-ratio="0.14367269267364416" data-s="300,640" data-w="1051" data-type="png" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></span></a></section></section><section style="text-align: justify;box-sizing: border-box;"><p style="white-space: normal;margin: 0px;padding: 0px;box-sizing: border-box;"></p></section></section></section></section></section>
+    <p style="white-space: normal;margin: 0px;padding: 0px;box-sizing: border-box;"><span leaf=""></span></p>
+    <section style="text-align: center;line-height: 0;box-sizing: border-box;margin-top: 16px;"><section style="max-width: 100%;vertical-align: middle;display: inline-block;line-height: 0;border-radius: 10px;overflow: hidden;box-sizing: border-box;" nodeleaf=""><img src="https://mmbiz.qpic.cn/mmbiz_png/fc90sFPPBCNnChuCqY5TK78KORbHN3ficOaIgpjRfNqQWMJqRxxNGpMb2Om3ebIfpJGIs7nfu2WrCYzYjLkH6qicYms1ibfJbFujmoNFYaavpw/640?wx_fmt=png" data-src="https://mmbiz.qpic.cn/mmbiz_png/fc90sFPPBCNnChuCqY5TK78KORbHN3ficOaIgpjRfNqQWMJqRxxNGpMb2Om3ebIfpJGIs7nfu2WrCYzYjLkH6qicYms1ibfJbFujmoNFYaavpw/640?wx_fmt=png" class="rich_pages wxw-img" data-ratio="1.3333333333333333" data-s="300,640" data-w="1080" data-type="png" style="vertical-align: middle;max-width: 100%;width: 100%;box-sizing: border-box;"></section></section>
     """
 
     private static let weChatFooterBannerHTML = """
@@ -801,6 +804,30 @@ enum EtherpadExporter {
     <p style="margin-left: 16px;margin-right: 16px;margin-bottom: 24px;"><span style="color: rgba(0, 0, 0, 0.9);font-size: 12px;font-weight: bold;font-family: mp-quote, &quot;PingFang SC&quot;, system-ui, -apple-system, BlinkMacSystemFont, &quot;Helvetica Neue&quot;, &quot;Hiragino Sans GB&quot;, &quot;Microsoft YaHei UI&quot;, &quot;Microsoft YaHei&quot;, Arial, sans-serif;line-height: 1.6;letter-spacing: 0.034em;">编辑｜ifanr</span></p>
     \(weChatFooterImagesHTML)
     """
+
+    private static func isArticleMetaLine(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefixes = ["作者", "编辑", "声明", "题图", "插图", "封面", "策划", "排版", "免责声明", "文"]
+        for p in prefixes {
+            if trimmed.hasPrefix("\(p)｜") || trimmed.hasPrefix("\(p)|") || trimmed.hasPrefix("\(p)：") || trimmed.hasPrefix("\(p):") {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func hasNextArticleMetaLine(from index: Int, in lines: [String]) -> Bool {
+        var nextIdx = index + 1
+        while nextIdx < lines.count {
+            let candidate = lines[nextIdx].trimmingCharacters(in: .whitespaces)
+            if candidate.isEmpty {
+                nextIdx += 1
+                continue
+            }
+            return isArticleMetaLine(candidate)
+        }
+        return false
+    }
 
     private static func isCaptionText(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1252,12 +1279,11 @@ enum EtherpadExporter {
                 continue
             }
 
-            // Author / Editor lines
-            let isAuthor = trimmed.hasPrefix("作者｜") || trimmed.hasPrefix("作者|") || trimmed.hasPrefix("作者：") || trimmed.hasPrefix("作者:")
-            let isEditor = trimmed.hasPrefix("编辑｜") || trimmed.hasPrefix("编辑|") || trimmed.hasPrefix("编辑：") || trimmed.hasPrefix("编辑:")
-            if isAuthor || isEditor {
+            // Author / Editor / Disclaimer / Metadata lines
+            if isArticleMetaLine(trimmed) {
                 let content = parseWeChatInline(trimmed, imgRadius: imgRadius)
-                let marginBottom = isAuthor ? "0px" : "24px"
+                let hasNextMeta = hasNextArticleMetaLine(from: index, in: lines)
+                let marginBottom = hasNextMeta ? "0px" : "24px"
                 let authorStyle = "margin-left: 16px;margin-right: 16px;margin-bottom: \(marginBottom);"
                 let spanStyle = "color: rgba(0, 0, 0, 0.9);font-size: 12px;font-weight: bold;font-family: mp-quote, &quot;PingFang SC&quot;, system-ui, -apple-system, BlinkMacSystemFont, &quot;Helvetica Neue&quot;, &quot;Hiragino Sans GB&quot;, &quot;Microsoft YaHei UI&quot;, &quot;Microsoft YaHei&quot;, Arial, sans-serif;line-height: 1.6;letter-spacing: 0.034em;"
                 result += "<p style=\"\(authorStyle)\"><span style=\"\(spanStyle)\">\(content)</span></p>\n"
@@ -1279,8 +1305,8 @@ enum EtherpadExporter {
         if addFooterBanner {
             let hasFooterImg = markdown.contains("fc90sFPPBCNnChuCqY5TK78KORbHN3ficOaIgpjRfNqQWMJqRxxNG")
             if !hasFooterImg {
-                let hasAuthorOrEditor = markdown.contains("作者｜") || markdown.contains("作者|") || markdown.contains("作者：") || markdown.contains("作者:") || markdown.contains("编辑｜") || markdown.contains("编辑|") || markdown.contains("编辑：") || markdown.contains("编辑:")
-                if hasAuthorOrEditor {
+                let hasAuthorOrMeta = lines.contains { isArticleMetaLine($0) }
+                if hasAuthorOrMeta {
                     result += weChatFooterImagesHTML + "\n"
                 } else {
                     result += weChatFooterBannerHTML + "\n"
