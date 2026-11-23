@@ -32,7 +32,7 @@ LiquidConvert now includes a native Windows x64 edition in [`LiquidConvert.Windo
 - Lark2Pad with clipboard and Markdown import, drag-and-drop, Etherpad export/sync, and rich-text copying for WeChat Official Accounts.
 - A bilingual (English / Simplified Chinese) Windows installer that creates a Start Menu shortcut by default and offers desktop shortcut and launch-on-finish choices.
 
-For development and installer instructions, see [the Windows README](./LiquidConvert.Windows/README.md).
+For development and installer instructions, see [the Windows README](./LiquidConvert.Windows/README.md). Headless document and web extraction is available in the separately packaged [Windows CLI](./LiquidConvert.Cli/README.md).
 
 ## ✨ Core Features
 

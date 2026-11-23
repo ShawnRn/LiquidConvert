@@ -2,6 +2,7 @@
 .DS_Store
 LiquidConvert.Windows/bin/
 LiquidConvert.Windows/obj/
+LiquidConvert.Cli/__pycache__/
 artifacts/
 .Trashes
 .AppleDouble

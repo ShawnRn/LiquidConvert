@@ -63,6 +63,7 @@
   liquidconvert --batch <URL-or-file>... --output-dir <目录> --no-ocr --json
   ```
 - 内置文档转换运行时采用 MarkItDown `0.1.7`，升级时使用版本化环境，安装失败不会破坏原有可用版本。
+- [Windows 独立 CLI](./LiquidConvert.Cli/README.md) 提供 ARM64 和 x64 便携包，用于从文档和可公开访问的网页提取 Markdown。
 
 ## 🎨 设计与体验
 
